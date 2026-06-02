@@ -7,6 +7,9 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+let parentDeathMonitor = ParentDeathMonitor()
+parentDeathMonitor.start()
+
 let environment = ProcessInfo.processInfo.environment
 
 guard let scriptPath = CommandLine.arguments.dropFirst().first else {
