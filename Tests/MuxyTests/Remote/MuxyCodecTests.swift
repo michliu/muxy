@@ -70,16 +70,10 @@ struct MuxyCodecTests {
     @Test("event round-trip preserves payload")
     func eventRoundTrip() throws {
         let paneID = UUID()
-        let deviceID = UUID()
         let original = MuxyMessage.event(
             MuxyEvent(
-                event: .paneOwnershipChanged,
-                data: .paneOwnership(
-                    PaneOwnershipEventDTO(
-                        paneID: paneID,
-                        owner: .remote(deviceID: deviceID, deviceName: "iPhone")
-                    )
-                )
+                event: .terminalDetached,
+                data: .terminalDetached(TerminalDetachedEventDTO(paneID: paneID))
             )
         )
 
@@ -87,14 +81,13 @@ struct MuxyCodecTests {
         let decoded = try MuxyCodec.decode(data)
 
         guard case let .event(event) = decoded,
-              case let .paneOwnership(dto) = event.data
+              case let .terminalDetached(dto) = event.data
         else {
-            Issue.record("expected pane ownership event")
+            Issue.record("expected terminal detached event")
             return
         }
-        #expect(event.event == .paneOwnershipChanged)
+        #expect(event.event == .terminalDetached)
         #expect(dto.paneID == paneID)
-        #expect(dto.owner == .remote(deviceID: deviceID, deviceName: "iPhone"))
     }
 
     @Test("unknown param type rejects decoding")
@@ -106,35 +99,29 @@ struct MuxyCodecTests {
         }
     }
 
-    @Test("terminal cells payload preserves cells array")
-    func terminalCellsRoundTrip() throws {
+    @Test("terminal attach payload preserves offset and snapshot")
+    func terminalAttachRoundTrip() throws {
         let paneID = UUID()
-        let cells = (0 ..< 4).map {
-            TerminalCellDTO(codepoint: UInt32($0) + 65, fg: 0xFF_FFFF, bg: 0, flags: 0)
-        }
-        let payload = TerminalCellsDTO(
+        let payload = TerminalAttachDTO(
             paneID: paneID,
-            cols: 2,
-            rows: 2,
-            cursorX: 1,
-            cursorY: 1,
-            cursorVisible: true,
-            defaultFg: 0xFF_FFFF,
-            defaultBg: 0,
-            cells: cells
+            cols: 80,
+            rows: 24,
+            baseOffset: 4_096,
+            snapshot: Data("paint".utf8)
         )
 
-        let data = try MuxyCodec.encode(.response(MuxyResponse(id: "c1", result: .terminalCells(payload))))
+        let data = try MuxyCodec.encode(.response(MuxyResponse(id: "c1", result: .terminalAttach(payload))))
         let decoded = try MuxyCodec.decode(data)
 
         guard case let .response(response) = decoded,
-              case let .terminalCells(roundTripped) = response.result
+              case let .terminalAttach(roundTripped) = response.result
         else {
-            Issue.record("expected terminalCells response")
+            Issue.record("expected terminalAttach response")
             return
         }
         #expect(roundTripped.paneID == paneID)
-        #expect(roundTripped.cells.count == 4)
-        #expect(roundTripped.cells.first?.codepoint == 65)
+        #expect(roundTripped.cols == 80)
+        #expect(roundTripped.baseOffset == 4_096)
+        #expect(roundTripped.snapshot == Data("paint".utf8))
     }
 }

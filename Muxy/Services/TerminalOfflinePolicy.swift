@@ -30,8 +30,8 @@ enum TerminalOfflinePolicy {
 }
 
 enum SleepingTabPlaceholderPolicy {
-    static func shouldPresent(isVisible: Bool, isOffline: Bool, isRemotelyOwned: Bool) -> Bool {
-        guard isVisible, isOffline, !isRemotelyOwned else { return false }
+    static func shouldPresent(isVisible: Bool, isOffline: Bool, isAttachedByRemote: Bool) -> Bool {
+        guard isVisible, isOffline, !isAttachedByRemote else { return false }
         return true
     }
 }

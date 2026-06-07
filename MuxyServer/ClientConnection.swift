@@ -37,7 +37,15 @@ final class ClientConnection: @unchecked Sendable {
     }
 
     func send(_ data: Data) {
-        let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+        send(data, opcode: .text)
+    }
+
+    func sendBinary(_ data: Data) {
+        send(data, opcode: .binary)
+    }
+
+    private func send(_ data: Data, opcode: NWProtocolWebSocket.Opcode) {
+        let metadata = NWProtocolWebSocket.Metadata(opcode: opcode)
         let context = NWConnection.ContentContext(
             identifier: "muxy",
             metadata: [metadata]
@@ -76,12 +84,16 @@ final class ClientConnection: @unchecked Sendable {
                 return
             }
 
-            self.handleData(content)
+            self.handleData(content, isBinary: metadata.opcode == .binary)
             self.receiveNextMessage()
         }
     }
 
-    private func handleData(_ data: Data) {
+    private func handleData(_ data: Data, isBinary: Bool) {
+        if isBinary {
+            handleBinary(data)
+            return
+        }
         do {
             let message = try MuxyCodec.decode(data)
             switch message {
@@ -93,6 +105,15 @@ final class ClientConnection: @unchecked Sendable {
             }
         } catch {
             logger.error("Failed to decode message: \(error)")
+        }
+    }
+
+    private func handleBinary(_ data: Data) {
+        do {
+            let frame = try TerminalFrameCodec.decode(data)
+            server?.handleTerminalFrame(frame, from: id)
+        } catch {
+            logger.error("Failed to decode terminal frame: \(error)")
         }
     }
 }

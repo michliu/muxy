@@ -9,8 +9,10 @@ private final class MockDelegate: MuxyRemoteServerDelegate {
     var listProjectsCalled = 0
     var selectProjectCalls: [UUID] = []
     var terminalInputCalls: [(paneID: UUID, bytes: Data, clientID: UUID)] = []
-    var takeOverCalls: [(paneID: UUID, clientID: UUID, cols: UInt32, rows: UInt32)] = []
-    var releasePaneCalls: [(paneID: UUID, clientID: UUID)] = []
+    var attachPaneCalls: [(paneID: UUID, clientID: UUID)] = []
+    var detachPaneCalls: [(paneID: UUID, clientID: UUID)] = []
+    var resyncPaneCalls: [(paneID: UUID, haveOffset: UInt64, clientID: UUID)] = []
+    var ackCalls: [(paneID: UUID, offset: UInt64, clientID: UUID)] = []
     var registerDeviceCalls: [(clientID: UUID, name: String)] = []
     var clientDisconnectedCalls: [UUID] = []
     var markNotificationReadCalls: [UUID] = []
@@ -30,7 +32,8 @@ private final class MockDelegate: MuxyRemoteServerDelegate {
     var stubProjects: [ProjectDTO] = []
     var stubWorkspace: WorkspaceDTO?
     var stubTab: TabDTO?
-    var stubTerminalContent: TerminalCellsDTO?
+    var stubAttach: TerminalAttachDTO?
+    var stubResyncResult = true
     var vcsCommitError: Error?
     var vcsRefreshCalls: [UUID] = []
     var stubVCSStatus: VCSStatusDTO?
@@ -57,20 +60,26 @@ private final class MockDelegate: MuxyRemoteServerDelegate {
     func closeArea(projectID _: UUID, areaID _: UUID) {}
     func focusArea(projectID _: UUID, areaID _: UUID) {}
 
-    func sendTerminalInput(paneID: UUID, bytes: Data, clientID: UUID) {
+    func terminalInput(paneID: UUID, bytes: Data, clientID: UUID) {
         terminalInputCalls.append((paneID, bytes, clientID))
     }
 
-    func resizeTerminal(paneID _: UUID, cols _: UInt32, rows _: UInt32, clientID _: UUID) {}
-    func scrollTerminal(paneID _: UUID, deltaX _: Double, deltaY _: Double, precise _: Bool, clientID _: UUID) {}
-    func getTerminalContent(paneID _: UUID) -> TerminalCellsDTO? { stubTerminalContent }
-
-    func takeOverPane(paneID: UUID, clientID: UUID, cols: UInt32, rows: UInt32) {
-        takeOverCalls.append((paneID, clientID, cols, rows))
+    func attachPane(paneID: UUID, clientID: UUID) -> TerminalAttachDTO? {
+        attachPaneCalls.append((paneID, clientID))
+        return stubAttach
     }
 
-    func releasePane(paneID: UUID, clientID: UUID) {
-        releasePaneCalls.append((paneID, clientID))
+    func detachPane(paneID: UUID, clientID: UUID) {
+        detachPaneCalls.append((paneID, clientID))
+    }
+
+    func resyncPane(paneID: UUID, haveOffset: UInt64, clientID: UUID) -> Bool {
+        resyncPaneCalls.append((paneID, haveOffset, clientID))
+        return stubResyncResult
+    }
+
+    func clientAckedTerminal(paneID: UUID, offset: UInt64, clientID: UUID) {
+        ackCalls.append((paneID, offset, clientID))
     }
 
     func registerDevice(clientID: UUID, name: String) {
@@ -91,7 +100,6 @@ private final class MockDelegate: MuxyRemoteServerDelegate {
         clientDisconnectedCalls.append(clientID)
     }
 
-    func getPaneOwner(paneID _: UUID) -> PaneOwnerDTO? { nil }
     func getVCSStatus(projectID _: UUID) async -> VCSStatusDTO? { nil }
 
     func vcsRefresh(projectID: UUID) async -> VCSStatusDTO? {
@@ -271,48 +279,131 @@ struct MuxyRemoteServerRoutingTests {
         #expect(response.result == nil)
     }
 
-    @Test("terminalInput threads clientID from connection into delegate")
-    func terminalInputCarriesClientID() async {
+    @Test("attachPane returns the delegate attach payload")
+    func attachPaneRoutes() async {
+        let (server, delegate) = makeServer()
+        let clientID = authedClient(on: server)
+        let paneID = UUID()
+        delegate.stubAttach = TerminalAttachDTO(
+            paneID: paneID,
+            cols: 80,
+            rows: 24,
+            baseOffset: 100,
+            snapshot: Data("paint".utf8)
+        )
+
+        let response = await server.processRequest(
+            MuxyRequest(id: "4", method: .attachPane, params: .attachPane(AttachPaneParams(paneID: paneID))),
+            clientID: clientID
+        )
+
+        #expect(delegate.attachPaneCalls.first?.paneID == paneID)
+        #expect(delegate.attachPaneCalls.first?.clientID == clientID)
+        guard case let .terminalAttach(attach) = response.result else {
+            Issue.record("expected terminalAttach result")
+            return
+        }
+        #expect(attach.cols == 80)
+        #expect(attach.rows == 24)
+        #expect(attach.baseOffset == 100)
+    }
+
+    @Test("attachPane returns notFound when delegate cannot materialize")
+    func attachPaneNotFound() async {
+        let (server, delegate) = makeServer()
+        delegate.stubAttach = nil
+
+        let response = await server.processRequest(
+            MuxyRequest(id: "4n", method: .attachPane, params: .attachPane(AttachPaneParams(paneID: UUID()))),
+            clientID: authedClient(on: server)
+        )
+
+        #expect(response.error?.code == 404)
+    }
+
+    @Test("detachPane forwards pane and clientID")
+    func detachPaneRoutes() async {
         let (server, delegate) = makeServer()
         let clientID = authedClient(on: server)
         let paneID = UUID()
 
-        _ = await server.processRequest(
-            MuxyRequest(
-                id: "4",
-                method: .terminalInput,
-                params: .terminalInput(TerminalInputParams(paneID: paneID, bytes: Data("hello".utf8)))
-            ),
+        let response = await server.processRequest(
+            MuxyRequest(id: "5", method: .detachPane, params: .detachPane(DetachPaneParams(paneID: paneID))),
             clientID: clientID
         )
 
-        #expect(delegate.terminalInputCalls.count == 1)
+        #expect(delegate.detachPaneCalls.first?.paneID == paneID)
+        #expect(delegate.detachPaneCalls.first?.clientID == clientID)
+        guard case .ok = response.result else {
+            Issue.record("expected ok")
+            return
+        }
+    }
+
+    @Test("resyncPane forwards offset and maps false to notFound")
+    func resyncPaneRoutes() async {
+        let (server, delegate) = makeServer()
+        let clientID = authedClient(on: server)
+        let paneID = UUID()
+        delegate.stubResyncResult = true
+
+        let okResponse = await server.processRequest(
+            MuxyRequest(id: "5a", method: .resyncPane, params: .resyncPane(ResyncPaneParams(paneID: paneID, haveOffset: 256))),
+            clientID: clientID
+        )
+        #expect(delegate.resyncPaneCalls.first?.paneID == paneID)
+        #expect(delegate.resyncPaneCalls.first?.haveOffset == 256)
+        #expect(delegate.resyncPaneCalls.first?.clientID == clientID)
+        guard case .ok = okResponse.result else {
+            Issue.record("expected ok")
+            return
+        }
+
+        delegate.stubResyncResult = false
+        let missingResponse = await server.processRequest(
+            MuxyRequest(id: "5b", method: .resyncPane, params: .resyncPane(ResyncPaneParams(paneID: paneID, haveOffset: 0))),
+            clientID: clientID
+        )
+        #expect(missingResponse.error?.code == 404)
+    }
+
+    @Test("input binary frame routes to delegate with bytes and clientID")
+    func inputFrameRoutes() async {
+        let (server, delegate) = makeServer()
+        let clientID = authedClient(on: server)
+        let paneID = UUID()
+
+        server.handleTerminalFrame(.input(paneID: paneID, bytes: Data("ls\r".utf8)), from: clientID)
+        await Task.yield()
+
         #expect(delegate.terminalInputCalls.first?.paneID == paneID)
-        #expect(delegate.terminalInputCalls.first?.bytes == Data("hello".utf8))
+        #expect(delegate.terminalInputCalls.first?.bytes == Data("ls\r".utf8))
         #expect(delegate.terminalInputCalls.first?.clientID == clientID)
     }
 
-    @Test("takeOverPane threads clientID and sizes through")
-    func takeOverPaneRoutes() async {
+    @Test("ack binary frame routes to delegate")
+    func ackFrameRoutes() async {
         let (server, delegate) = makeServer()
         let clientID = authedClient(on: server)
         let paneID = UUID()
 
-        _ = await server.processRequest(
-            MuxyRequest(
-                id: "5",
-                method: .takeOverPane,
-                params: .takeOverPane(TakeOverPaneParams(paneID: paneID, cols: 80, rows: 24))
-            ),
-            clientID: clientID
-        )
+        server.handleTerminalFrame(.ack(paneID: paneID, offset: 512), from: clientID)
+        await Task.yield()
 
-        #expect(delegate.takeOverCalls.count == 1)
-        let call = delegate.takeOverCalls.first
-        #expect(call?.paneID == paneID)
-        #expect(call?.clientID == clientID)
-        #expect(call?.cols == 80)
-        #expect(call?.rows == 24)
+        #expect(delegate.ackCalls.first?.paneID == paneID)
+        #expect(delegate.ackCalls.first?.offset == 512)
+        #expect(delegate.ackCalls.first?.clientID == clientID)
+    }
+
+    @Test("terminal frames from unauthenticated clients are ignored")
+    func framesRequireAuth() async {
+        let (server, delegate) = makeServer()
+        let paneID = UUID()
+
+        server.handleTerminalFrame(.input(paneID: paneID, bytes: Data("x".utf8)), from: UUID())
+        await Task.yield()
+
+        #expect(delegate.terminalInputCalls.isEmpty)
     }
 
     @Test("registerDevice returns device info with clientID")

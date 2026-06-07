@@ -9,7 +9,7 @@ struct SleepingTabPlaceholderPolicyTests {
         #expect(SleepingTabPlaceholderPolicy.shouldPresent(
             isVisible: true,
             isOffline: true,
-            isRemotelyOwned: false
+            isAttachedByRemote: false
         ))
     }
 
@@ -18,7 +18,7 @@ struct SleepingTabPlaceholderPolicyTests {
         #expect(!SleepingTabPlaceholderPolicy.shouldPresent(
             isVisible: false,
             isOffline: true,
-            isRemotelyOwned: false
+            isAttachedByRemote: false
         ))
     }
 
@@ -27,16 +27,16 @@ struct SleepingTabPlaceholderPolicyTests {
         #expect(!SleepingTabPlaceholderPolicy.shouldPresent(
             isVisible: true,
             isOffline: false,
-            isRemotelyOwned: false
+            isAttachedByRemote: false
         ))
     }
 
-    @Test("hides while the pane is owned by a remote device")
-    func hidesWhenRemotelyOwned() {
+    @Test("hides while a remote device is attached")
+    func hidesWhenAttachedByRemote() {
         #expect(!SleepingTabPlaceholderPolicy.shouldPresent(
             isVisible: true,
             isOffline: true,
-            isRemotelyOwned: true
+            isAttachedByRemote: true
         ))
     }
 }

@@ -25,6 +25,8 @@ final class GhosttyTerminalNSView: NSView {
     var onCmdClickFile: ((String) -> Void)?
     var resolveCmdHoverFile: ((String) -> Bool)?
     var onOpenURL: ((URL) -> Bool)?
+    var onHostResize: ((UInt32, UInt32) -> Void)?
+    private var lastReportedHostSize: (cols: UInt32, rows: UInt32)?
     private var isShowingHandCursor = false
     private var fileHoverUnderlineLayer: CAShapeLayer?
     private var lastMouseTopDownPoint: CGPoint?
@@ -402,9 +404,9 @@ final class GhosttyTerminalNSView: NSView {
         return !isAlternateScreenActive(surface: surface)
     }
 
-    var isOfflineBlockedByRemote: Bool {
+    var isAttachedByRemote: Bool {
         guard let paneID = TerminalViewRegistry.shared.paneID(for: self) else { return false }
-        return TerminalViewRegistry.shared.isOwnedByRemote(paneID)
+        return TerminalViewRegistry.shared.isAttachedByRemote(paneID)
     }
 
     func takeOffline() {
@@ -420,7 +422,7 @@ final class GhosttyTerminalNSView: NSView {
 
     private var isEligibleForOffline: Bool {
         surface != nil && !keepsAwake && offlineInvisibleAt != nil
-            && !isOfflineBlockedByRemote && isTerminalIdle()
+            && !isAttachedByRemote && isTerminalIdle()
     }
 
     private func performOfflineTeardown() {
@@ -466,16 +468,22 @@ final class GhosttyTerminalNSView: NSView {
             ghostty_surface_set_display_id(surface, displayID)
         }
 
-        if let paneID = TerminalViewRegistry.shared.paneID(for: self),
-           TerminalViewRegistry.shared.isOwnedByRemote(paneID)
-        {
-            return
-        }
-
         ghostty_surface_set_size(surface, backingSize.width, backingSize.height)
+        notifyHostResizeIfNeeded(surface: surface)
     }
 
-    func remoteOwnershipDidChange() {
+    private func notifyHostResizeIfNeeded(surface: ghostty_surface_t) {
+        guard onHostResize != nil else { return }
+        let size = ghostty_surface_size(surface)
+        guard size.columns > 0, size.rows > 0 else { return }
+        let cols = UInt32(size.columns)
+        let rows = UInt32(size.rows)
+        guard lastReportedHostSize?.cols != cols || lastReportedHostSize?.rows != rows else { return }
+        lastReportedHostSize = (cols: cols, rows: rows)
+        onHostResize?(cols, rows)
+    }
+
+    func remoteAttachmentDidChange() {
         updateMetalLayerSize(deferred: false)
     }
 

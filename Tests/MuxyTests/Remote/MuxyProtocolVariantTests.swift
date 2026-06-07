@@ -4,13 +4,6 @@ import Testing
 
 @Suite("MuxyProtocol variants")
 struct MuxyProtocolVariantTests {
-    private let projectID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
-    private let worktreeID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
-    private let areaID = UUID(uuidString: "00000000-0000-0000-0000-000000000003")!
-    private let tabID = UUID(uuidString: "00000000-0000-0000-0000-000000000004")!
-    private let paneID = UUID(uuidString: "00000000-0000-0000-0000-000000000005")!
-    private let deviceID = UUID(uuidString: "00000000-0000-0000-0000-000000000006")!
-
     @Test("params encode and decode every protocol case", arguments: MuxyProtocolVariantTests.paramSamples())
     func paramsRoundTrip(sample: ProtocolSample<MuxyParams>) throws {
         let decoded = try roundTrip(sample.value, as: MuxyParams.self)
@@ -51,27 +44,6 @@ struct MuxyProtocolVariantTests {
         #expect(decoded == value)
     }
 
-    @Test("pane owner display name uses local and remote names")
-    func paneOwnerDisplayName() {
-        #expect(PaneOwnerDTO.mac(deviceName: "Mac").displayName == "Mac")
-        #expect(PaneOwnerDTO.remote(deviceID: deviceID, deviceName: "iPad").displayName == "iPad")
-    }
-
-    @Test("terminal cell flags remain stable bit masks")
-    func terminalCellFlags() {
-        #expect(TerminalCellFlag.bold == 1)
-        #expect(TerminalCellFlag.italic == 2)
-        #expect(TerminalCellFlag.faint == 4)
-        #expect(TerminalCellFlag.blink == 8)
-        #expect(TerminalCellFlag.inverse == 16)
-        #expect(TerminalCellFlag.invisible == 32)
-        #expect(TerminalCellFlag.strike == 64)
-        #expect(TerminalCellFlag.underline == 128)
-        #expect(TerminalCellFlag.overline == 256)
-        #expect(TerminalCellFlag.wide == 512)
-        #expect(TerminalCellFlag.spacer == 1024)
-    }
-
     @Test("VCS DTO defaults preserve backwards compatible values")
     func vcsDefaults() {
         let file = GitFileDTO(path: "Sources/App.swift", status: .modified)
@@ -98,15 +70,12 @@ struct MuxyProtocolVariantTests {
             ProtocolSample(.splitArea(SplitAreaParams(projectID: ids.projectID, areaID: ids.areaID, direction: .horizontal, position: .second)), caseName: ".splitArea"),
             ProtocolSample(.closeArea(CloseAreaParams(projectID: ids.projectID, areaID: ids.areaID)), caseName: ".closeArea"),
             ProtocolSample(.focusArea(FocusAreaParams(projectID: ids.projectID, areaID: ids.areaID)), caseName: ".focusArea"),
-            ProtocolSample(.terminalInput(TerminalInputParams(paneID: ids.paneID, bytes: Data([1, 2, 3]))), caseName: ".terminalInput"),
-            ProtocolSample(.terminalResize(TerminalResizeParams(paneID: ids.paneID, cols: 120, rows: 40)), caseName: ".terminalResize"),
-            ProtocolSample(.terminalScroll(TerminalScrollParams(paneID: ids.paneID, deltaX: 1.5, deltaY: -3.25, precise: true)), caseName: ".terminalScroll"),
-            ProtocolSample(.getTerminalContent(GetTerminalContentParams(paneID: ids.paneID)), caseName: ".getTerminalContent"),
+            ProtocolSample(.attachPane(AttachPaneParams(paneID: ids.paneID)), caseName: ".attachPane"),
+            ProtocolSample(.detachPane(DetachPaneParams(paneID: ids.paneID)), caseName: ".detachPane"),
+            ProtocolSample(.resyncPane(ResyncPaneParams(paneID: ids.paneID, haveOffset: 4_096)), caseName: ".resyncPane"),
             ProtocolSample(.registerDevice(RegisterDeviceParams(deviceName: "iPhone")), caseName: ".registerDevice"),
             ProtocolSample(.pairDevice(PairDeviceParams(deviceID: ids.deviceID, deviceName: "iPhone", token: "token")), caseName: ".pairDevice"),
             ProtocolSample(.authenticateDevice(AuthenticateDeviceParams(deviceID: ids.deviceID, deviceName: "iPhone", token: "token")), caseName: ".authenticateDevice"),
-            ProtocolSample(.takeOverPane(TakeOverPaneParams(paneID: ids.paneID, cols: 80, rows: 24)), caseName: ".takeOverPane"),
-            ProtocolSample(.releasePane(ReleasePaneParams(paneID: ids.paneID)), caseName: ".releasePane"),
             ProtocolSample(.getVCSStatus(GetVCSStatusParams(projectID: ids.projectID)), caseName: ".getVCSStatus"),
             ProtocolSample(.vcsRefresh(VCSRefreshParams(projectID: ids.projectID)), caseName: ".vcsRefresh"),
             ProtocolSample(.vcsCommit(VCSCommitParams(projectID: ids.projectID, message: "Commit", stageAll: true)), caseName: ".vcsCommit"),
@@ -126,7 +95,7 @@ struct MuxyProtocolVariantTests {
             ProtocolSample(.getProjectLogo(GetProjectLogoParams(projectID: ids.projectID)), caseName: ".getProjectLogo"),
             ProtocolSample(.markNotificationRead(MarkNotificationReadParams(notificationID: ids.notificationID)), caseName: ".markNotificationRead"),
             ProtocolSample(.subscribe(SubscribeParams(events: [.workspaceChanged, .themeChanged])), caseName: ".subscribe"),
-            ProtocolSample(.unsubscribe(UnsubscribeParams(events: [.terminalOutput])), caseName: ".unsubscribe"),
+            ProtocolSample(.unsubscribe(UnsubscribeParams(events: [.terminalDetached])), caseName: ".unsubscribe"),
             ProtocolSample(.extensionRequest(ExtensionRequestParams(extension: "weather", action: "forecast", payload: .object(["city": .string("Berlin")]))), caseName: ".extensionRequest"),
         ]
     }
@@ -138,11 +107,9 @@ struct MuxyProtocolVariantTests {
             ProtocolSample(.worktrees([WorktreeDTO(id: ids.worktreeID, name: "Main", path: "/repo", branch: "main", isPrimary: true, createdAt: Date(timeIntervalSince1970: 3))]), caseName: ".worktrees"),
             ProtocolSample(.workspace(workspace(ids)), caseName: ".workspace"),
             ProtocolSample(.tab(tab(ids)), caseName: ".tab"),
-            ProtocolSample(.terminalContent(TerminalContentDTO(paneID: ids.paneID, content: "hello", cols: 80, rows: 24)), caseName: ".terminalContent"),
-            ProtocolSample(.terminalCells(terminalCells(ids)), caseName: ".terminalCells"),
+            ProtocolSample(.terminalAttach(TerminalAttachDTO(paneID: ids.paneID, cols: 80, rows: 24, baseOffset: 4_096, snapshot: Data([65, 66]))), caseName: ".terminalAttach"),
             ProtocolSample(.deviceInfo(DeviceInfoDTO(clientID: ids.deviceID, deviceName: "iPad", themeFg: 1, themeBg: 2, themePalette: [1, 2])), caseName: ".deviceInfo"),
             ProtocolSample(.pairing(PairingResultDTO(clientID: ids.deviceID, deviceName: "iPad", themeFg: 1, themeBg: 2, themePalette: [3])), caseName: ".pairing"),
-            ProtocolSample(.paneOwner(.mac(deviceName: "Mac")), caseName: ".paneOwner"),
             ProtocolSample(.vcsStatus(vcsStatus), caseName: ".vcsStatus"),
             ProtocolSample(.vcsBranches(VCSBranchesDTO(current: "main", locals: ["main"], defaultBranch: "main")), caseName: ".vcsBranches"),
             ProtocolSample(.vcsPRCreated(VCSCreatePRResultDTO(url: "https://example.test/pull/1", number: 1)), caseName: ".vcsPRCreated"),
@@ -158,11 +125,9 @@ struct MuxyProtocolVariantTests {
         let ids = IDs()
         return [
             ProtocolSample(.workspace(workspace(ids)), caseName: ".workspace"),
-            ProtocolSample(.terminalOutput(TerminalOutputEventDTO(paneID: ids.paneID, bytes: Data([65]))), caseName: ".terminalOutput"),
-            ProtocolSample(.terminalSnapshot(TerminalOutputEventDTO(paneID: ids.paneID, bytes: Data([66]))), caseName: ".terminalSnapshot"),
+            ProtocolSample(.terminalDetached(TerminalDetachedEventDTO(paneID: ids.paneID)), caseName: ".terminalDetached"),
             ProtocolSample(.notification(notification(ids)), caseName: ".notification"),
             ProtocolSample(.projects([project(ids)]), caseName: ".projects"),
-            ProtocolSample(.paneOwnership(PaneOwnershipEventDTO(paneID: ids.paneID, owner: .remote(deviceID: ids.deviceID, deviceName: "iPad"))), caseName: ".paneOwnership"),
             ProtocolSample(.deviceTheme(DeviceThemeEventDTO(fg: 1, bg: 2, palette: [1, 2, 3])), caseName: ".deviceTheme"),
         ]
     }
@@ -181,12 +146,6 @@ struct MuxyProtocolVariantTests {
 
     private static func tab(_ ids: IDs) -> TabDTO {
         TabDTO(id: ids.tabID, kind: .terminal, title: "Shell", isPinned: false, paneID: ids.paneID)
-    }
-
-    private static func terminalCells(_ ids: IDs) -> TerminalCellsDTO {
-        TerminalCellsDTO(paneID: ids.paneID, cols: 1, rows: 1, cursorX: 0, cursorY: 0, cursorVisible: true, defaultFg: 0xFFFFFF, defaultBg: 0, cells: [
-            TerminalCellDTO(codepoint: 65, fg: 0xFFFFFF, bg: 0, flags: TerminalCellFlag.bold),
-        ], altScreen: true, cursorKeys: true, bracketedPaste: true, focusEvent: true, mouseEvent: 1, mouseFormat: 2)
     }
 
     private static var vcsStatus: VCSStatusDTO {

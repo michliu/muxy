@@ -71,29 +71,31 @@ classDiagram
 
 `paneID` is required for terminal-related methods.
 
-## Terminal snapshot
+## Terminal attach
 
-`getTerminalContent` returns a full terminal grid:
+`attachPane` returns the state needed to start rendering a pane:
 
 ```json
 {
   "paneID": "uuid",
   "cols": 120,
   "rows": 40,
-  "cursorX": 10,
-  "cursorY": 5,
-  "cursorVisible": true,
-  "defaultFg": 16777215,
-  "defaultBg": 0,
-  "cells": [
-    { "codepoint": 65, "fg": 16777215, "bg": 0, "flags": 0 }
-  ]
+  "baseOffset": 4096,
+  "snapshot": "<base64-encoded raw VT bytes>"
 }
 ```
 
-- Colors are integer RGB in `0xRRGGBB` form.
-- `cells` is a flat array representing the full grid.
-- `flags` is a bitmask for text styling and wide-character metadata.
+- `cols` / `rows` are the host's terminal size. Render at this size and fit-to-width on screen.
+- `snapshot` is a one-time paint of the current screen as raw VT bytes. Feed it into your emulator first; live `output` frames follow.
+- `baseOffset` is the byte offset of the live stream as of the snapshot. Consume [`output` binary frames](protocol.md#terminal-binary-channel) whose `sequence` is at or after it, and track `nextExpectedOffset` for [`resyncPane`](methods.md#terminal).
+
+## Terminal detached
+
+```json
+{ "paneID": "uuid" }
+```
+
+Sent as a `terminalDetached` event when an attached pane is closed on the Mac.
 
 ## Notification
 

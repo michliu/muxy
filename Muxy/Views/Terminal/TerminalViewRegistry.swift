@@ -9,8 +9,8 @@ final class TerminalViewRegistry {
 
     private init() {}
 
-    func isOwnedByRemote(_ paneID: UUID) -> Bool {
-        !PaneOwnershipStore.shared.isOwnedByMac(paneID)
+    func isAttachedByRemote(_ paneID: UUID) -> Bool {
+        TerminalAttachManager.shared.hasAnyAttachment(paneID: paneID)
     }
 
     func view(

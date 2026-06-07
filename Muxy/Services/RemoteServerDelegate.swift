@@ -23,9 +23,8 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         self.appState = appState
         self.projectStore = projectStore
         self.worktreeStore = worktreeStore
-        PaneOwnershipStore.shared.onOwnershipChanged = { [weak self] paneID, owner in
-            TerminalViewRegistry.shared.existingView(for: paneID)?.remoteOwnershipDidChange()
-            self?.broadcastOwnership(paneID: paneID, owner: owner)
+        TerminalAttachManager.shared.onAttachmentChanged = { paneID in
+            TerminalViewRegistry.shared.existingView(for: paneID)?.remoteAttachmentDidChange()
         }
         NotificationCenter.default.addObserver(
             forName: .themeDidChange,
@@ -38,11 +37,6 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         }
         observeWorkspaceState()
         observeProjectsState()
-    }
-
-    private func broadcastOwnership(paneID: UUID, owner: PaneOwnerDTO) {
-        let dto = PaneOwnershipEventDTO(paneID: paneID, owner: owner)
-        server?.broadcast(MuxyEvent(event: .paneOwnershipChanged, data: .paneOwnership(dto)))
     }
 
     private func broadcastTheme() {
@@ -187,8 +181,8 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         appState.dispatch(.focusArea(projectID: projectID, areaID: areaID))
     }
 
-    func sendTerminalInput(paneID: UUID, bytes: Data, clientID: UUID) {
-        guard PaneOwnershipStore.shared.isOwnedBy(clientID: clientID, paneID: paneID) else {
+    func terminalInput(paneID: UUID, bytes: Data, clientID: UUID) {
+        guard TerminalAttachManager.shared.isAttached(clientID: clientID, paneID: paneID) else {
             return
         }
         guard let view = ensureTerminalView(paneID: paneID), view.ensureLiveSurfaceForExternalIO() else {
@@ -199,45 +193,8 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         view.sendRemoteBytes(bytes)
     }
 
-    func scrollTerminal(paneID: UUID, deltaX: Double, deltaY: Double, precise: Bool, clientID: UUID) {
-        guard PaneOwnershipStore.shared.isOwnedBy(clientID: clientID, paneID: paneID) else {
-            return
-        }
-        guard let view = ensureTerminalView(paneID: paneID),
-              view.ensureLiveSurfaceForExternalIO(),
-              let surface = view.surface
-        else { return }
-
-        let mods: ghostty_input_scroll_mods_t = precise ? 1 : 0
-        ghostty_surface_mouse_scroll(surface, deltaX, deltaY, mods)
-    }
-
-    func resizeTerminal(paneID: UUID, cols: UInt32, rows: UInt32, clientID: UUID) {
-        guard PaneOwnershipStore.shared.isOwnedBy(clientID: clientID, paneID: paneID) else {
-            return
-        }
-        applyPTYSize(paneID: paneID, cols: cols, rows: rows)
-    }
-
-    private func applyPTYSize(paneID: UUID, cols: UInt32, rows: UInt32) {
-        guard let view = ensureTerminalView(paneID: paneID),
-              view.ensureLiveSurfaceForExternalIO(),
-              let surface = view.surface
-        else { return }
-
-        let size = ghostty_surface_size(surface)
-        guard size.cell_width_px > 0, size.cell_height_px > 0 else {
-            logger.warning("Cannot resize pane \(paneID): cell metrics not yet available")
-            return
-        }
-
-        let w = cols * size.cell_width_px
-        let h = rows * size.cell_height_px
-        ghostty_surface_set_size(surface, w, h)
-    }
-
     func registerDevice(clientID: UUID, name: String) {
-        PaneOwnershipStore.shared.registerDevice(clientID: clientID, name: name)
+        TerminalAttachManager.shared.registerDevice(clientID: clientID, name: name)
     }
 
     func authenticateDevice(deviceID: UUID, token: String, name: String) -> DeviceAuthDecision {
@@ -271,16 +228,67 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         ThemeService.shared.currentThemeColors()
     }
 
-    func takeOverPane(paneID: UUID, clientID: UUID, cols: UInt32, rows: UInt32) {
-        guard ensureTerminalView(paneID: paneID) != nil else { return }
-        let snapshotBytes = buildTerminalSnapshot(paneID: paneID)
-        PaneOwnershipStore.shared.assign(paneID: paneID, to: clientID)
-        if let bytes = snapshotBytes, !bytes.isEmpty {
-            let dto = TerminalOutputEventDTO(paneID: paneID, bytes: bytes)
-            let event = MuxyEvent(event: .terminalSnapshot, data: .terminalSnapshot(dto))
-            server?.send(event, to: clientID)
+    func attachPane(paneID: UUID, clientID: UUID) -> TerminalAttachDTO? {
+        guard let view = ensureTerminalView(paneID: paneID), view.ensureLiveSurfaceForExternalIO() else {
+            return nil
         }
-        applyPTYSize(paneID: paneID, cols: cols, rows: rows)
+        view.onHostResize = { [weak self] cols, rows in
+            self?.broadcastResize(paneID: paneID, cols: cols, rows: rows)
+        }
+        TerminalAttachManager.shared.attach(paneID: paneID, clientID: clientID)
+        let size = hostSize(paneID: paneID) ?? (cols: 0, rows: 0)
+        let snapshot = readScreenSnapshot(paneID: paneID).map(TerminalScreenPaint.buildBytes) ?? Data()
+        let baseOffset = TerminalAttachManager.shared.buffer(for: paneID)?.totalAppended ?? 0
+        return TerminalAttachDTO(
+            paneID: paneID,
+            cols: size.cols,
+            rows: size.rows,
+            baseOffset: baseOffset,
+            snapshot: snapshot
+        )
+    }
+
+    func detachPane(paneID: UUID, clientID: UUID) {
+        TerminalAttachManager.shared.detach(paneID: paneID, clientID: clientID)
+    }
+
+    func resyncPane(paneID: UUID, haveOffset: UInt64, clientID: UUID) -> Bool {
+        guard TerminalAttachManager.shared.isAttached(clientID: clientID, paneID: paneID),
+              let buffer = TerminalAttachManager.shared.buffer(for: paneID)
+        else { return false }
+
+        switch buffer.bytes(from: haveOffset) {
+        case let .delta(data):
+            if !data.isEmpty {
+                let frame = TerminalFrame.output(paneID: paneID, offset: haveOffset, bytes: data)
+                server?.sendTerminalFrame(frame, to: clientID)
+            }
+        case let .tooOld(currentOffset):
+            if let size = hostSize(paneID: paneID) {
+                server?.sendTerminalFrame(.resize(paneID: paneID, cols: size.cols, rows: size.rows), to: clientID)
+            }
+            if let snapshot = readScreenSnapshot(paneID: paneID) {
+                let bytes = TerminalScreenPaint.buildBytes(from: snapshot)
+                let frame = TerminalFrame.output(paneID: paneID, offset: currentOffset, bytes: bytes)
+                server?.sendTerminalFrame(frame, to: clientID)
+            }
+        }
+        return true
+    }
+
+    func clientAckedTerminal(paneID _: UUID, offset _: UInt64, clientID _: UUID) {}
+
+    func clientDisconnected(clientID: UUID) {
+        TerminalAttachManager.shared.detachAll(clientID: clientID)
+    }
+
+    private func broadcastResize(paneID: UUID, cols: UInt32, rows: UInt32) {
+        let clients = TerminalAttachManager.shared.attachedClients(for: paneID)
+        guard !clients.isEmpty else { return }
+        let frame = TerminalFrame.resize(paneID: paneID, cols: cols, rows: rows)
+        for clientID in clients {
+            server?.sendTerminalFrame(frame, to: clientID)
+        }
     }
 
     private func ensureTerminalView(paneID: UUID) -> GhosttyTerminalNSView? {
@@ -291,27 +299,16 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         return view
     }
 
-    private func buildTerminalSnapshot(paneID: UUID) -> Data? {
-        guard let snapshot = getTerminalContent(paneID: paneID) else { return nil }
-        return RemoteTerminalSnapshotBuilder.buildBytes(from: snapshot)
+    private func hostSize(paneID: UUID) -> (cols: UInt32, rows: UInt32)? {
+        guard let view = TerminalViewRegistry.shared.existingView(for: paneID),
+              let surface = view.surface
+        else { return nil }
+        let size = ghostty_surface_size(surface)
+        guard size.columns > 0, size.rows > 0 else { return nil }
+        return (cols: UInt32(size.columns), rows: UInt32(size.rows))
     }
 
-    func releasePane(paneID: UUID, clientID: UUID) {
-        guard PaneOwnershipStore.shared.isOwnedBy(clientID: clientID, paneID: paneID) else {
-            return
-        }
-        PaneOwnershipStore.shared.releaseToMac(paneID: paneID)
-    }
-
-    func clientDisconnected(clientID: UUID) {
-        PaneOwnershipStore.shared.releaseAll(clientID: clientID)
-    }
-
-    func getPaneOwner(paneID: UUID) -> PaneOwnerDTO? {
-        PaneOwnershipStore.shared.owner(for: paneID)
-    }
-
-    func getTerminalContent(paneID: UUID) -> TerminalCellsDTO? {
+    private func readScreenSnapshot(paneID: UUID) -> TerminalScreenSnapshot? {
         guard let view = ensureTerminalView(paneID: paneID),
               view.ensureLiveSurfaceForExternalIO(),
               let surface = view.surface
@@ -322,12 +319,12 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         defer { ghostty_surface_free_cells(surface, &out) }
 
         let total = Int(out.cells_len)
-        var cells: [TerminalCellDTO] = []
+        var cells: [TerminalScreenCell] = []
         cells.reserveCapacity(total)
         if let ptr = out.cells {
             for i in 0 ..< total {
                 let cell = ptr[i]
-                cells.append(TerminalCellDTO(
+                cells.append(TerminalScreenCell(
                     codepoint: cell.codepoint,
                     fg: cell.fg_rgb,
                     bg: cell.bg_rgb,
@@ -336,12 +333,11 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
             }
         }
 
-        return TerminalCellsDTO(
-            paneID: paneID,
-            cols: out.cols,
-            rows: out.rows,
-            cursorX: out.cursor_x,
-            cursorY: out.cursor_y,
+        return TerminalScreenSnapshot(
+            cols: Int(out.cols),
+            rows: Int(out.rows),
+            cursorX: Int(out.cursor_x),
+            cursorY: Int(out.cursor_y),
             cursorVisible: out.cursor_visible,
             defaultFg: out.default_fg,
             defaultBg: out.default_bg,
@@ -776,7 +772,7 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
             return .failure(.forbidden)
         }
 
-        let deviceName = PaneOwnershipStore.shared.deviceName(for: clientID) ?? "Mobile"
+        let deviceName = TerminalAttachManager.shared.deviceName(for: clientID) ?? "Mobile"
         let consent = ExtensionConsentRequestBuilder.make(
             extensionID: extensionID,
             verb: .remoteInvoke,

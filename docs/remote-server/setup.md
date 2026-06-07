@@ -22,11 +22,11 @@ The Mobile server is **disabled by default**. Toggle it from **Settings → Mobi
 
 The API is designed for trusted local networks.
 
-- Transport is `ws://`, not TLS.
-- Clients must authenticate before any other RPC.
-- New devices must be approved from the Mac before they become trusted.
+- Transport is `ws://`, **not** TLS. Once a client is attached, the live terminal byte stream — everything typed and printed — is visible to anyone sniffing the local network.
+- Clients must authenticate before any other RPC, and every reconnect re-validates the device's secret token.
+- New devices must be approved from the Mac before they become trusted; approvals are revocable.
 
-For production integrations, treat the connection as local-network only unless you provide your own secure tunnel such as Tailscale or a VPN.
+For any non-trusted network, run the connection over **Tailscale** (WireGuard-encrypted end-to-end) or another VPN. Do not expose the port directly to the internet. TLS may be added in a future release without changing the wire protocol.
 
 ## Error codes
 
@@ -45,6 +45,8 @@ For production integrations, treat the connection as local-network only unless y
 - Re-authenticate after reconnecting.
 - Treat `workspaceChanged` as authoritative.
 - Cache project logos after decoding the Base64 payload.
-- Call `takeOverPane` before interactive terminal control.
+- Call `attachPane` before interactive terminal use; on reconnect, try `resyncPane` first and fall back to `attachPane`.
 - Handle `401` by retrying with pairing only when appropriate.
 - Do not assume event filtering is enforced server-side.
+
+See the [mobile client guide](mobile-client.md) for the full terminal implementation plan.

@@ -22,22 +22,22 @@ Enums:
 - `direction`: `horizontal`, `vertical`
 - `position`: `first`, `second`
 
-## Terminal control
+## Terminal
+
+Terminal sessions use **tmux-style shared attach**, not ownership transfer. The Mac stays fully live while a client is attached; both the Mac and any attached clients type into the same shell. Input, output, and resize are [binary frames](protocol.md#terminal-binary-channel), not JSON RPC.
 
 | Method | Parameters | Result |
 | --- | --- | --- |
-| `takeOverPane` | `paneID`, `cols`, `rows` | `ok` |
-| `releasePane` | `paneID` | `ok` |
-| `terminalInput` | `paneID`, `bytes` | `ok` |
-| `terminalResize` | `paneID`, `cols`, `rows` | `ok` |
-| `terminalScroll` | `paneID`, `deltaX`, `deltaY`, `precise` | `ok` |
-| `getTerminalContent` | `paneID` | `terminalCells` |
+| `attachPane` | `paneID` | `terminalAttach` |
+| `detachPane` | `paneID` | `ok` |
+| `resyncPane` | `paneID`, `haveOffset` | `ok` |
 
-Notes:
+Flow:
 
-- Terminal control is **ownership-based**. Call `takeOverPane` before sending input or resize events; `releasePane` returns control to the Mac. If a pane is owned by another client, control requests may be ignored.
-- `terminalInput.bytes` is base64-encoded raw bytes, delivered verbatim to the PTY. The client encodes escape sequences, control codes, and mouse reports directly.
-- `getTerminalContent` is a **legacy pull API** that snapshots the rendered grid. New clients should render the pane with their own VT emulator and subscribe to the `terminalOutput` event stream instead.
+- **`attachPane`** materializes the pane if needed and returns a [`terminalAttach`](data-objects.md#terminal-attach): the host `cols`/`rows`, a `baseOffset`, and a one-time `snapshot` (raw VT bytes that paint the current screen). Paint the snapshot, then start consuming `output` binary frames whose `sequence` is at or after `baseOffset`. Returns `404` if the pane cannot be materialized.
+- Send keystrokes as `input` binary frames. The host owns the terminal size and pushes a `resize` frame on attach and whenever the Mac window changes; render at the host size and fit-to-width on screen. Clients never resize the host.
+- **`resyncPane`** is for reconnect: send the highest offset you have (`nextExpectedOffset`). The host replays the exact missed bytes as `output` frames, or — if you have been gone too long for its replay buffer — repaints the screen. Returns `404` if the pane has no live session to resync against; fall back to `attachPane` in that case.
+- **`detachPane`** stops the stream. The Mac session is unaffected and keeps running.
 
 ## Notifications & visual data
 

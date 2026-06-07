@@ -40,12 +40,15 @@ final class RemoteTerminalStreamer {
     }
 
     fileprivate func forward(paneID: UUID, bytes: Data) {
-        guard let clientID = PaneOwnershipStore.shared.remoteOwner(for: paneID) else { return }
-        let event = MuxyEvent(
-            event: .terminalOutput,
-            data: .terminalOutput(TerminalOutputEventDTO(paneID: paneID, bytes: bytes))
-        )
-        server?.send(event, to: clientID)
+        guard let offset = TerminalAttachManager.shared.appendIfBuffered(paneID: paneID, bytes: bytes) else {
+            return
+        }
+        let clients = TerminalAttachManager.shared.attachedClients(for: paneID)
+        guard !clients.isEmpty else { return }
+        let frame = TerminalFrame.output(paneID: paneID, offset: offset, bytes: bytes)
+        for clientID in clients {
+            server?.sendTerminalFrame(frame, to: clientID)
+        }
     }
 }
 

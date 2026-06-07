@@ -1,10 +1,45 @@
 import Foundation
-import MuxyShared
 
-enum RemoteTerminalSnapshotBuilder {
-    static func buildBytes(from snapshot: TerminalCellsDTO) -> Data {
-        let cols = Int(snapshot.cols)
-        let rows = Int(snapshot.rows)
+struct TerminalScreenCell {
+    let codepoint: UInt32
+    let fg: UInt32
+    let bg: UInt32
+    let flags: UInt16
+}
+
+struct TerminalScreenSnapshot {
+    let cols: Int
+    let rows: Int
+    let cursorX: Int
+    let cursorY: Int
+    let cursorVisible: Bool
+    let defaultFg: UInt32
+    let defaultBg: UInt32
+    let cells: [TerminalScreenCell]
+    let altScreen: Bool
+    let cursorKeys: Bool
+    let bracketedPaste: Bool
+    let focusEvent: Bool
+    let mouseEvent: UInt16
+    let mouseFormat: UInt16
+}
+
+enum TerminalScreenCellFlag {
+    static let bold: UInt16 = 1 << 0
+    static let italic: UInt16 = 1 << 1
+    static let faint: UInt16 = 1 << 2
+    static let blink: UInt16 = 1 << 3
+    static let inverse: UInt16 = 1 << 4
+    static let invisible: UInt16 = 1 << 5
+    static let strike: UInt16 = 1 << 6
+    static let underline: UInt16 = 1 << 7
+    static let overline: UInt16 = 1 << 8
+}
+
+enum TerminalScreenPaint {
+    static func buildBytes(from snapshot: TerminalScreenSnapshot) -> Data {
+        let cols = snapshot.cols
+        let rows = snapshot.rows
         guard cols > 0, rows > 0, snapshot.cells.count >= cols * rows else { return Data() }
 
         var output = String()
@@ -61,8 +96,8 @@ enum RemoteTerminalSnapshotBuilder {
 
         output.append("\u{1B}[0m")
 
-        let cursorRow = min(max(Int(snapshot.cursorY) + 1, 1), rows)
-        let cursorCol = min(max(Int(snapshot.cursorX) + 1, 1), cols)
+        let cursorRow = min(max(snapshot.cursorY + 1, 1), rows)
+        let cursorCol = min(max(snapshot.cursorX + 1, 1), cols)
         output.append("\u{1B}[\(cursorRow);\(cursorCol)H")
 
         if !snapshot.cursorVisible {
@@ -89,7 +124,7 @@ enum RemoteTerminalSnapshotBuilder {
     }
 
     private static func lastNonDefaultCellIndex(
-        cells: [TerminalCellDTO],
+        cells: [TerminalScreenCell],
         row: Int,
         cols: Int,
         defaultFg: UInt32,
@@ -123,15 +158,15 @@ enum RemoteTerminalSnapshotBuilder {
     ) -> String {
         var params = ["0"]
 
-        if flags & TerminalCellFlag.bold != 0 { params.append("1") }
-        if flags & TerminalCellFlag.faint != 0 { params.append("2") }
-        if flags & TerminalCellFlag.italic != 0 { params.append("3") }
-        if flags & TerminalCellFlag.underline != 0 { params.append("4") }
-        if flags & TerminalCellFlag.blink != 0 { params.append("5") }
-        if flags & TerminalCellFlag.inverse != 0 { params.append("7") }
-        if flags & TerminalCellFlag.invisible != 0 { params.append("8") }
-        if flags & TerminalCellFlag.strike != 0 { params.append("9") }
-        if flags & TerminalCellFlag.overline != 0 { params.append("53") }
+        if flags & TerminalScreenCellFlag.bold != 0 { params.append("1") }
+        if flags & TerminalScreenCellFlag.faint != 0 { params.append("2") }
+        if flags & TerminalScreenCellFlag.italic != 0 { params.append("3") }
+        if flags & TerminalScreenCellFlag.underline != 0 { params.append("4") }
+        if flags & TerminalScreenCellFlag.blink != 0 { params.append("5") }
+        if flags & TerminalScreenCellFlag.inverse != 0 { params.append("7") }
+        if flags & TerminalScreenCellFlag.invisible != 0 { params.append("8") }
+        if flags & TerminalScreenCellFlag.strike != 0 { params.append("9") }
+        if flags & TerminalScreenCellFlag.overline != 0 { params.append("53") }
 
         if fg != defaultFg {
             params.append("38;2;\((fg >> 16) & 0xFF);\((fg >> 8) & 0xFF);\(fg & 0xFF)")

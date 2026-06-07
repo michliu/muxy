@@ -15,18 +15,21 @@ flowchart TB
 | Page | What's in it |
 | --- | --- |
 | [Setup](setup.md) | Enable the server, port, security model |
+| [Mobile client guide](mobile-client.md) | How to build the terminal side of a client |
 | [Pairing](pairing.md) | Authenticate, pair, register flow |
 | [Protocol](protocol.md) | Message envelope, request/response/event |
 | [Methods](methods.md) | Every RPC method and its parameters |
 | [Events](events.md) | Server-pushed events and their payloads |
-| [Data Objects](data-objects.md) | Project, Worktree, Workspace, Notification, Terminal snapshot |
+| [Data Objects](data-objects.md) | Project, Worktree, Workspace, Notification, Terminal attach |
 
 ## Quick reference
 
 - Endpoint: `ws://<host>:<port>` (default port `4865`)
-- Format: JSON, UTF-8, ISO-8601 dates, UUID strings
+- Two channels on one socket: **text** frames are JSON RPC; **binary** frames carry the live terminal byte stream.
+- Format: JSON (text channel), UTF-8, ISO-8601 dates, UUID strings
 - Disabled by default; enable in **Settings → Mobile**
 - All clients must authenticate before any other RPC is accepted
+- Terminals are **attach/detach** (tmux-style shared), not takeover. Attach with [`attachPane`](methods.md#terminal), reconnect with `resyncPane`.
 
 ## Recommended client startup
 

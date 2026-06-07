@@ -38,18 +38,16 @@ public protocol MuxyRemoteServerDelegate: AnyObject {
     func splitArea(projectID: UUID, areaID: UUID, direction: SplitDirectionDTO, position: SplitPositionDTO)
     func closeArea(projectID: UUID, areaID: UUID)
     func focusArea(projectID: UUID, areaID: UUID)
-    func sendTerminalInput(paneID: UUID, bytes: Data, clientID: UUID)
-    func resizeTerminal(paneID: UUID, cols: UInt32, rows: UInt32, clientID: UUID)
-    func scrollTerminal(paneID: UUID, deltaX: Double, deltaY: Double, precise: Bool, clientID: UUID)
-    func getTerminalContent(paneID: UUID) -> TerminalCellsDTO?
-    func takeOverPane(paneID: UUID, clientID: UUID, cols: UInt32, rows: UInt32)
-    func releasePane(paneID: UUID, clientID: UUID)
+    func attachPane(paneID: UUID, clientID: UUID) -> TerminalAttachDTO?
+    func detachPane(paneID: UUID, clientID: UUID)
+    func resyncPane(paneID: UUID, haveOffset: UInt64, clientID: UUID) -> Bool
+    func terminalInput(paneID: UUID, bytes: Data, clientID: UUID)
+    func clientAckedTerminal(paneID: UUID, offset: UInt64, clientID: UUID)
     func registerDevice(clientID: UUID, name: String)
     func authenticateDevice(deviceID: UUID, token: String, name: String) -> DeviceAuthDecision
     func requestPairing(deviceID: UUID, token: String, name: String) async -> DeviceAuthDecision
     func getDeviceTheme() -> DeviceThemeEventDTO?
     func clientDisconnected(clientID: UUID)
-    func getPaneOwner(paneID: UUID) -> PaneOwnerDTO?
     func getVCSStatus(projectID: UUID) async -> VCSStatusDTO?
     func vcsRefresh(projectID: UUID) async -> VCSStatusDTO?
     func vcsCommit(projectID: UUID, message: String, stageAll: Bool) async throws
@@ -148,6 +146,16 @@ public final class MuxyRemoteServer: @unchecked Sendable {
         }
     }
 
+    public func sendTerminalFrame(_ frame: TerminalFrame, to clientID: UUID) {
+        let data = TerminalFrameCodec.encode(frame)
+        queue.async { [weak self] in
+            guard let self,
+                  self.authenticatedClients.contains(clientID)
+            else { return }
+            self.connections[clientID]?.sendBinary(data)
+        }
+    }
+
     public func disconnect(clientID: UUID) {
         queue.async { [weak self] in
             self?.connections[clientID]?.cancel()
@@ -164,6 +172,10 @@ public final class MuxyRemoteServer: @unchecked Sendable {
         }
     }
 
+    private func applyTransportSecurity(to parameters: NWParameters) -> NWParameters {
+        parameters
+    }
+
     private func startListener() {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             logger.error("Invalid port: \(self.port)")
@@ -172,7 +184,7 @@ public final class MuxyRemoteServer: @unchecked Sendable {
         }
 
         do {
-            let params = NWParameters.tcp
+            let params = applyTransportSecurity(to: NWParameters.tcp)
             params.allowLocalEndpointReuse = true
             let ws = NWProtocolWebSocket.Options()
             ws.autoReplyPing = true
@@ -259,10 +271,6 @@ public final class MuxyRemoteServer: @unchecked Sendable {
     }
 
     func handleRequest(_ request: MuxyRequest, from clientID: UUID) {
-        if Self.voidMethods.contains(request.method) {
-            Task { @MainActor in _ = await processRequest(request, clientID: clientID) }
-            return
-        }
         Task { @MainActor in
             let response = await processRequest(request, clientID: clientID)
             guard let data = try? MuxyCodec.encode(.response(response)) else { return }
@@ -272,7 +280,23 @@ public final class MuxyRemoteServer: @unchecked Sendable {
         }
     }
 
-    private static let voidMethods: Set<MuxyMethod> = [.terminalInput]
+    func handleTerminalFrame(_ frame: TerminalFrame, from clientID: UUID) {
+        guard isAuthenticated(clientID) else { return }
+        guard let delegate else { return }
+        switch frame.kind {
+        case .input:
+            Task { @MainActor in
+                delegate.terminalInput(paneID: frame.paneID, bytes: frame.payload, clientID: clientID)
+            }
+        case .ack:
+            Task { @MainActor in
+                delegate.clientAckedTerminal(paneID: frame.paneID, offset: frame.sequence, clientID: clientID)
+            }
+        case .output,
+             .resize:
+            break
+        }
+    }
 
     @MainActor
     func processRequest(_ request: MuxyRequest, clientID: UUID) async -> MuxyResponse {
@@ -409,46 +433,30 @@ public final class MuxyRemoteServer: @unchecked Sendable {
             delegate.focusArea(projectID: params.projectID, areaID: params.areaID)
             return MuxyResponse(id: request.id, result: .ok)
 
-        case .terminalInput:
-            guard case let .terminalInput(params) = request.params else {
+        case .attachPane:
+            guard case let .attachPane(params) = request.params else {
                 return MuxyResponse(id: request.id, error: .invalidParams)
             }
-            delegate.sendTerminalInput(paneID: params.paneID, bytes: params.bytes, clientID: clientID)
-            return MuxyResponse(id: request.id, result: .ok)
-
-        case .terminalResize:
-            guard case let .terminalResize(params) = request.params else {
-                return MuxyResponse(id: request.id, error: .invalidParams)
-            }
-            delegate.resizeTerminal(
-                paneID: params.paneID,
-                cols: params.cols,
-                rows: params.rows,
-                clientID: clientID
-            )
-            return MuxyResponse(id: request.id, result: .ok)
-
-        case .terminalScroll:
-            guard case let .terminalScroll(params) = request.params else {
-                return MuxyResponse(id: request.id, error: .invalidParams)
-            }
-            delegate.scrollTerminal(
-                paneID: params.paneID,
-                deltaX: params.deltaX,
-                deltaY: params.deltaY,
-                precise: params.precise,
-                clientID: clientID
-            )
-            return MuxyResponse(id: request.id, result: .ok)
-
-        case .getTerminalContent:
-            guard case let .getTerminalContent(params) = request.params else {
-                return MuxyResponse(id: request.id, error: .invalidParams)
-            }
-            guard let content = delegate.getTerminalContent(paneID: params.paneID) else {
+            guard let attach = delegate.attachPane(paneID: params.paneID, clientID: clientID) else {
                 return MuxyResponse(id: request.id, error: .notFound)
             }
-            return MuxyResponse(id: request.id, result: .terminalCells(content))
+            return MuxyResponse(id: request.id, result: .terminalAttach(attach))
+
+        case .detachPane:
+            guard case let .detachPane(params) = request.params else {
+                return MuxyResponse(id: request.id, error: .invalidParams)
+            }
+            delegate.detachPane(paneID: params.paneID, clientID: clientID)
+            return MuxyResponse(id: request.id, result: .ok)
+
+        case .resyncPane:
+            guard case let .resyncPane(params) = request.params else {
+                return MuxyResponse(id: request.id, error: .invalidParams)
+            }
+            guard delegate.resyncPane(paneID: params.paneID, haveOffset: params.haveOffset, clientID: clientID) else {
+                return MuxyResponse(id: request.id, error: .notFound)
+            }
+            return MuxyResponse(id: request.id, result: .ok)
 
         case .getVCSStatus:
             guard case let .getVCSStatus(params) = request.params else {
@@ -685,25 +693,6 @@ public final class MuxyRemoteServer: @unchecked Sendable {
                 themePalette: theme?.palette
             )
             return MuxyResponse(id: request.id, result: .deviceInfo(info))
-
-        case .takeOverPane:
-            guard case let .takeOverPane(params) = request.params else {
-                return MuxyResponse(id: request.id, error: .invalidParams)
-            }
-            delegate.takeOverPane(
-                paneID: params.paneID,
-                clientID: clientID,
-                cols: params.cols,
-                rows: params.rows
-            )
-            return MuxyResponse(id: request.id, result: .ok)
-
-        case .releasePane:
-            guard case let .releasePane(params) = request.params else {
-                return MuxyResponse(id: request.id, error: .invalidParams)
-            }
-            delegate.releasePane(paneID: params.paneID, clientID: clientID)
-            return MuxyResponse(id: request.id, result: .ok)
 
         case .extensionRequest:
             guard case let .extensionRequest(params) = request.params else {
