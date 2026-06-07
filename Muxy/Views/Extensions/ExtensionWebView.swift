@@ -10,7 +10,10 @@ struct ExtensionWebView: NSViewRepresentable {
     let appState: AppState
     let projectStore: ProjectStore?
     let worktreeStore: WorktreeStore?
+    let focused: Bool
     let onFocus: () -> Void
+
+    @Environment(\.overlayActive) private var overlayActive
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onFocus: onFocus)
@@ -68,6 +71,7 @@ struct ExtensionWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.applyDataIfChanged(initialData, in: webView)
+        context.coordinator.applyFocusIfChanged(focused, overlayActive: overlayActive, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -93,6 +97,8 @@ struct ExtensionWebView: NSViewRepresentable {
         private var extensionID: String = ""
         private var tabInstanceID: String = ""
         private var initialData: ExtensionJSON?
+        private var focused = false
+        private var overlayActive = false
 
         init(onFocus: @escaping () -> Void) {
             self.onFocus = onFocus
@@ -127,6 +133,32 @@ struct ExtensionWebView: NSViewRepresentable {
             initialData = data
             let script = ExtensionWebBridge.dataUpdateScript(data: data)
             webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+
+        func applyFocusIfChanged(_ focused: Bool, overlayActive: Bool, in webView: WKWebView) {
+            let focusChanged = focused != self.focused
+            let overlayChanged = overlayActive != self.overlayActive
+            guard focusChanged || overlayChanged else { return }
+            self.focused = focused
+            self.overlayActive = overlayActive
+            if focusChanged { pushFocusUpdate(in: webView) }
+            updateFirstResponder(for: webView)
+        }
+
+        private func pushFocusUpdate(in webView: WKWebView) {
+            let script = ExtensionWebBridge.focusUpdateScript(focused: focused)
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+
+        private func updateFirstResponder(for webView: WKWebView) {
+            DispatchQueue.main.async { [weak webView] in
+                guard let webView, let window = webView.window else { return }
+                if self.focused, !self.overlayActive {
+                    window.makeFirstResponder(webView)
+                } else if window.firstResponder === webView {
+                    window.makeFirstResponder(nil)
+                }
+            }
         }
 
         func observeThemeChanges(for webView: WKWebView) {
@@ -189,6 +221,12 @@ struct ExtensionWebView: NSViewRepresentable {
             bridge?.dropAllEventSubscriptions()
             bridge?.failPendingLifecycle()
             pushThemeUpdate()
+        }
+
+        func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
+            guard focused else { return }
+            pushFocusUpdate(in: webView)
+            updateFirstResponder(for: webView)
         }
     }
 }
