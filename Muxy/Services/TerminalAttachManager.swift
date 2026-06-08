@@ -12,8 +12,21 @@ final class TerminalAttachManager {
     private var deviceNames: [UUID: String] = [:]
 
     var onAttachmentChanged: ((UUID) -> Void)?
+    var onPaneClosed: ((UUID, Set<UUID>) -> Void)?
 
     private init() {}
+
+    func paneClosed(paneID: UUID) {
+        guard let clients = clientsByPane.removeValue(forKey: paneID) else { return }
+        buffers.removeValue(forKey: paneID)
+        for clientID in clients {
+            panesByClient[clientID]?.remove(paneID)
+            if panesByClient[clientID]?.isEmpty == true {
+                panesByClient.removeValue(forKey: clientID)
+            }
+        }
+        onPaneClosed?(paneID, clients)
+    }
 
     func registerDevice(clientID: UUID, name: String) {
         deviceNames[clientID] = name

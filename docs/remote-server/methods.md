@@ -35,7 +35,7 @@ Terminal sessions use **tmux-style shared attach**, not ownership transfer. The 
 Flow:
 
 - **`attachPane`** materializes the pane if needed and returns a [`terminalAttach`](data-objects.md#terminal-attach): the host `cols`/`rows`, a `baseOffset`, and a one-time `snapshot` (raw VT bytes that paint the current screen). Paint the snapshot, then start consuming `output` binary frames whose `sequence` is at or after `baseOffset`. Returns `404` if the pane cannot be materialized.
-- Send keystrokes as `input` binary frames. The host owns the terminal size and pushes a `resize` frame on attach and whenever the Mac window changes; render at the host size and fit-to-width on screen. Clients never resize the host.
+- Send keystrokes as `input` binary frames. The host owns the terminal size: the initial size arrives in the `terminalAttach` result, and a `resize` frame is pushed whenever the Mac window changes thereafter. Render at the host size and fit-to-width on screen. Clients never resize the host.
 - **`resyncPane`** is for reconnect: send the highest offset you have (`nextExpectedOffset`). The host replays the exact missed bytes as `output` frames, or — if you have been gone too long for its replay buffer — repaints the screen. Returns `404` if the pane has no live session to resync against; fall back to `attachPane` in that case.
 - **`detachPane`** stops the stream. The Mac session is unaffected and keeps running.
 

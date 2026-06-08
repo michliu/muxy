@@ -26,6 +26,9 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         TerminalAttachManager.shared.onAttachmentChanged = { paneID in
             TerminalViewRegistry.shared.existingView(for: paneID)?.remoteAttachmentDidChange()
         }
+        TerminalAttachManager.shared.onPaneClosed = { [weak self] paneID, clients in
+            self?.broadcastTerminalDetached(paneID: paneID, clients: clients)
+        }
         NotificationCenter.default.addObserver(
             forName: .themeDidChange,
             object: nil,
@@ -288,6 +291,14 @@ final class RemoteServerDelegate: MuxyRemoteServerDelegate {
         let frame = TerminalFrame.resize(paneID: paneID, cols: cols, rows: rows)
         for clientID in clients {
             server?.sendTerminalFrame(frame, to: clientID)
+        }
+    }
+
+    private func broadcastTerminalDetached(paneID: UUID, clients: Set<UUID>) {
+        guard !clients.isEmpty else { return }
+        let event = MuxyEvent(event: .terminalDetached, data: .terminalDetached(TerminalDetachedEventDTO(paneID: paneID)))
+        for clientID in clients {
+            server?.send(event, to: clientID)
         }
     }
 

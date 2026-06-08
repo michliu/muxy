@@ -76,6 +76,42 @@ struct TerminalAttachManagerTests {
         manager.detachAll(clientID: clientID)
     }
 
+    @Test("paneClosed reports the attached clients and tears the pane down")
+    func paneClosedReportsClients() {
+        let manager = freshManager()
+        let paneID = UUID()
+        let first = UUID()
+        let second = UUID()
+        var reported: Set<UUID> = []
+        manager.onPaneClosed = { closedPane, clients in
+            if closedPane == paneID { reported = clients }
+        }
+
+        manager.attach(paneID: paneID, clientID: first)
+        manager.attach(paneID: paneID, clientID: second)
+        manager.paneClosed(paneID: paneID)
+
+        #expect(reported == [first, second])
+        #expect(!manager.hasAnyAttachment(paneID: paneID))
+        #expect(manager.buffer(for: paneID) == nil)
+        #expect(!manager.isAttached(clientID: first, paneID: paneID))
+
+        manager.onPaneClosed = nil
+    }
+
+    @Test("paneClosed with no attachments does nothing")
+    func paneClosedNoAttachments() {
+        let manager = freshManager()
+        let paneID = UUID()
+        var fired = false
+        manager.onPaneClosed = { _, _ in fired = true }
+
+        manager.paneClosed(paneID: paneID)
+
+        #expect(!fired)
+        manager.onPaneClosed = nil
+    }
+
     @Test("detachAll removes the client from every pane and frees orphaned buffers")
     func detachAllClearsClient() {
         let manager = freshManager()

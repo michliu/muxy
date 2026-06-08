@@ -34,8 +34,8 @@ The Mac session is always alive regardless of your connectivity, so reconnect is
 1. On foreground / socket re-open, re-`authenticateDevice`.
 2. Send `resyncPane(paneID, haveOffset: nextExpectedOffset)`.
    - Success → the host replays exactly the bytes you missed as `output` frames. Seamless.
-   - `404` → the session's replay buffer is gone; call `attachPane` again and repaint from the fresh snapshot.
-3. Optionally send `ack` frames with your `nextExpectedOffset` so the host can bound its replay buffer.
+   - `404` → you are no longer attached to a live session (e.g. its replay buffer was freed after you fully detached); call `attachPane` again and repaint from the fresh snapshot.
+3. You may send `ack` frames with your `nextExpectedOffset`. They are accepted but the current host does not yet act on them, so this is optional.
 
 Expect iOS to suspend the app in the background and drop the socket within seconds — design for reconnect-and-resync on foreground rather than holding the connection.
 

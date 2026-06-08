@@ -116,6 +116,6 @@ After a client attaches to a pane (see [`attachPane`](methods.md#terminal)), liv
 - **output** (server → client): byte offset of the **first** payload byte in this pane's lifetime stream. The payload is raw PTY bytes — feed them straight into your VT emulator. Track `nextExpectedOffset = sequence + payloadLength`; that value is what you send to [`resyncPane`](methods.md#terminal) after a reconnect.
 - **input** (client → server): unused (send `0`). The payload is raw bytes delivered verbatim to the PTY — encode keystrokes, escape sequences, control codes, and mouse reports yourself.
 - **resize** (server → client only): the host's terminal size, packed as `(cols << 32) | rows`; `payloadLength` is `0`. The host owns the size; clients never send resize frames. Render at the host's `cols`×`rows` and fit-to-width on screen.
-- **ack** (client → server, optional): the highest contiguous offset you have rendered. Lets the host bound retransmission. Optional — a minimal client can skip it.
+- **ack** (client → server, optional): the highest contiguous offset you have rendered. Accepted and reserved for replay-buffer management; the current host does not yet act on it, and a minimal client can skip it.
 
 A chunk has no guarantee of ending on a UTF-8 or escape-sequence boundary; the emulator must buffer partial sequences across frames. Because the host streams the exact continuous byte stream, replaying from any `nextExpectedOffset` reproduces precisely the bytes a still-connected client would have received.
