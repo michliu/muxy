@@ -45,7 +45,6 @@ Lightweight terminal that has a rich API for extensions
 
 - macOS 14+
 - Swift 6.0+
-- `gh` installed (optional for PR management)
 
 ## Install
 
