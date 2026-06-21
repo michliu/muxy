@@ -73,6 +73,7 @@ enum ExtensionPermission: String, Codable, CaseIterable {
     case commandsRunScript = "commands:run-script"
     case commandsExec = "commands:exec"
     case remoteServe = "remote:serve"
+    case browserEmbed = "browser:embed"
 
     enum Kind {
         case read
@@ -102,7 +103,8 @@ enum ExtensionPermission: String, Codable, CaseIterable {
             .write
         case .commandsRunScript,
              .commandsExec,
-             .remoteServe:
+             .remoteServe,
+             .browserEmbed:
             .action
         }
     }

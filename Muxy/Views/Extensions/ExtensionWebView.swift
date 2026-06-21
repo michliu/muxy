@@ -20,9 +20,11 @@ struct ExtensionWebView: NSViewRepresentable {
         Coordinator(onFocus: onFocus)
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> ExtensionWebViewContainer {
+        let container = ExtensionWebViewContainer()
         guard let muxyExtension = ExtensionStore.shared.loadedExtension(id: extensionID) else {
-            return WKWebView(frame: .zero)
+            container.addSubview(WKWebView(frame: .zero))
+            return container
         }
 
         let config = WKWebViewConfiguration()
@@ -57,31 +59,43 @@ struct ExtensionWebView: NSViewRepresentable {
         )
         context.coordinator.installBridgeScript(into: userContent)
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: container.bounds, configuration: config)
+        webView.autoresizingMask = [.width, .height]
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         webView.load(URLRequest(url: entryURL))
+        container.addSubview(webView)
         bridge.attach(to: webView)
         let surfaceKey = LifecycleSurfaceKey(kind: surfaceKind, instanceID: instanceID)
         bridge.bind(surfaceKey: surfaceKey)
         ExtensionSurfaceBridgeRegistry.shared.register(bridge, for: surfaceKey)
+        ExtensionBrowserOverlayRegistry.shared.registerSurface(
+            surfaceKey,
+            container: container
+        ) { [weak bridge] viewID, state in
+            bridge?.deliverBrowserState(viewID: viewID, state: state)
+        }
         context.coordinator.surfaceKey = surfaceKey
+        context.coordinator.webViewForDismantle = webView
         context.coordinator.observeThemeChanges(for: webView)
-        return webView
+        return container
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ container: ExtensionWebViewContainer, context: Context) {
+        guard let webView = container.webView else { return }
         context.coordinator.applyDataIfChanged(initialData, in: webView)
         context.coordinator.applyFocusIfChanged(focused, overlayActive: overlayActive, in: webView)
     }
 
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_: ExtensionWebViewContainer, coordinator: Coordinator) {
         coordinator.stopObservingThemeChanges()
         coordinator.bridge?.dropAllEventSubscriptions()
         if let surfaceKey = coordinator.surfaceKey {
             ExtensionSurfaceBridgeRegistry.shared.unregister(surfaceKey)
+            ExtensionBrowserOverlayRegistry.shared.unregisterSurface(surfaceKey)
         }
+        guard let webView = coordinator.webViewForDismantle else { return }
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
         webView.configuration.userContentController.removeAllScriptMessageHandlers()
@@ -93,6 +107,7 @@ struct ExtensionWebView: NSViewRepresentable {
         var bridge: ExtensionBridgeHandler?
         var consoleHandler: ExtensionConsoleHandler?
         var surfaceKey: LifecycleSurfaceKey?
+        weak var webViewForDismantle: WKWebView?
         let onFocus: () -> Void
         private weak var webView: WKWebView?
         private var themeObserver: NSObjectProtocol?
@@ -230,6 +245,19 @@ struct ExtensionWebView: NSViewRepresentable {
             pushFocusUpdate(in: webView)
             updateFirstResponder(for: webView)
         }
+    }
+}
+
+final class ExtensionWebViewContainer: NSView {
+    override var isFlipped: Bool { true }
+
+    var webView: WKWebView? {
+        subviews.first { $0 is WKWebView } as? WKWebView
+    }
+
+    override func layout() {
+        super.layout()
+        webView?.frame = bounds
     }
 }
 

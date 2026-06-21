@@ -20,6 +20,7 @@ enum ExtensionGatedVerb: String, Codable, CaseIterable {
     case gitWrite = "git.write"
     case filesWrite = "files.write"
     case httpFetch = "http.fetch"
+    case browserEmbed = "browser.embed"
     case projectsDelete = "projects.delete"
 
     var kindDisplayName: String {
@@ -34,6 +35,7 @@ enum ExtensionGatedVerb: String, Codable, CaseIterable {
         case .gitWrite: "git changes"
         case .filesWrite: "file changes"
         case .httpFetch: "network requests"
+        case .browserEmbed: "embedded browser"
         case .projectsDelete: "project deletions"
         }
     }
@@ -185,6 +187,7 @@ enum ExtensionGatedPayload {
     case git(operation: String, repoPath: String)
     case file(operation: String, path: String)
     case http(hostname: String, method: String, url: String)
+    case browser
     case tabCommand(command: String)
     case project(name: String, path: String)
 
@@ -380,6 +383,8 @@ enum ExtensionGrantSuggestion {
             return .projectNameEquals(name)
         case let (.httpFetch, .http(hostname, _, _)):
             return .hostEquals(hostname)
+        case (.browserEmbed, _):
+            return .any
         case let (.tabsRunCommand, .tabCommand(command)):
             return .shellExact(command)
         case (.panesSend, _),

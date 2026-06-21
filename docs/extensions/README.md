@@ -98,6 +98,7 @@ flowchart TD
 | [Git](git.md) | Repository access: status, diff, log, branches, PRs, worktrees |
 | [Files](files.md) | Workspace filesystem access: list, read, stat, write, mkdir, rename, move, delete |
 | [HTTP](http.md) | Call external HTTP(S) APIs from native code without CORS; host-keyed consent |
+| [Browser](browser.md) | Embed a live, CORS-free browser viewport in your UI; isolated profiles and cookies |
 | [Settings](settings.md) | Declare typed settings and read/write them at runtime |
 | [Remote Methods](remote-methods.md) | Serve named API methods to the mobile app via the remote server |
 | [Logs](logs.md) | Where logs live on disk, console.* bridge, size cap and trim policy |

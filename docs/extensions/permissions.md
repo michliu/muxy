@@ -30,6 +30,7 @@ Permissions apply only to identified callers. The host identifies itself on beha
 | `commands:run-script` | Execute `runScript` palette command actions in the per-extension JavaScriptCore context. |
 | `commands:exec` | Run shell commands via `muxy.exec` (subprocess execution with stdout/stderr capture). |
 | `remote:serve` | Serve [remote methods](remote-methods.md) declared in `remoteMethods` to the mobile app over the remote server. Each call also prompts for runtime consent. |
+| `browser:embed` | Embed a live [browser](browser.md) viewport (`muxy.browser.*`) in a tab/panel/popover, and manage its profiles/cookies. The first embed prompts the user once; navigation then runs freely (no per-host prompt). |
 
 `muxy.http.fetch` ([HTTP](http.md)) needs **no manifest permission** — it is gated by host consent at runtime only.
 
@@ -49,6 +50,7 @@ These verbs prompt the user at runtime even when the manifest permission is gran
 | `files.*` (writes) | Modifying workspace files (write, mkdir, rename, move, delete). Remembered per operation (allowing `write` does not allow `delete`). |
 | `projects.delete` | Deleting a project and cleaning up its worktrees on disk. Gated under `projects:delete`. Remembered per project name. |
 | `http.fetch` | Calling an external host via [`muxy.http`](http.md). Remembered per host (allowing `api.github.com` does not allow `example.com`). Private/loopback hosts are blocked before prompting. |
+| `browser.embed` | An extension embedding a live [browser](browser.md) viewport for the first time. Prompted once and remembered for the extension; the user then drives navigation freely (no per-host prompt, no host blocking). |
 
 The prompt shows the extension, the verb, and the literal payload (full argv, the keystroke, or the pane id). The user picks:
 
@@ -71,6 +73,7 @@ Rules live in `~/Library/Application Support/Muxy/extension-grants.json` (Muxy-o
 | `exec` (shell form) | `shellExact` of the full shell string. |
 | `panes.*` / `tabs.openForeign` | `any` for that verb. Pane and tab targets are per-session, so the grant covers any future target. |
 | `http.fetch` | `hostEquals` of the request host. Allowing `api.github.com` covers any path/method on that host but no other host. |
+| `browser.embed` | `any` for the extension. The single grant covers all future browsing in that extension. |
 
 Rules can be reviewed, refined, or removed in `Settings → Extensions → Permissions`. Deny rules win over allow rules; more specific patterns win over less specific ones.
 

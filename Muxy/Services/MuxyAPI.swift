@@ -207,7 +207,26 @@ enum MuxyAPI {
             "lifecycle.ackBeforeClose",
             "lifecycle.resolveBeforeClose",
             "lifecycle.closeSelf",
-        ]).union(gitVerbs).union(filesVerbs)
+        ]).union(gitVerbs).union(filesVerbs).union(browserVerbs)
+
+        static let browserVerbs: Set<String> = [
+            "browser.attach",
+            "browser.updateRect",
+            "browser.setVisible",
+            "browser.navigate",
+            "browser.back",
+            "browser.forward",
+            "browser.reload",
+            "browser.stop",
+            "browser.find",
+            "browser.execJS",
+            "browser.detach",
+            "browser.profiles.list",
+            "browser.profiles.create",
+            "browser.profiles.delete",
+            "browser.profiles.clear",
+            "browser.profiles.setCookies",
+        ]
 
         static let filesVerbs: Set<String> = [
             "files.list",
@@ -360,6 +379,22 @@ enum MuxyAPI {
             "topbar.set": .panelsWrite,
             "statusbar.set": .panelsWrite,
             "exec": .commandsExec,
+            "browser.attach": .browserEmbed,
+            "browser.updateRect": .browserEmbed,
+            "browser.setVisible": .browserEmbed,
+            "browser.navigate": .browserEmbed,
+            "browser.back": .browserEmbed,
+            "browser.forward": .browserEmbed,
+            "browser.reload": .browserEmbed,
+            "browser.stop": .browserEmbed,
+            "browser.find": .browserEmbed,
+            "browser.execJS": .browserEmbed,
+            "browser.detach": .browserEmbed,
+            "browser.profiles.list": .browserEmbed,
+            "browser.profiles.create": .browserEmbed,
+            "browser.profiles.delete": .browserEmbed,
+            "browser.profiles.clear": .browserEmbed,
+            "browser.profiles.setCookies": .browserEmbed,
         ]
 
         private static let eventPermissions: [String: ExtensionPermission] = [

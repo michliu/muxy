@@ -202,7 +202,8 @@ final class ExtensionBridgeHandler: NSObject, WKScriptMessageHandlerWithReply, B
                     appState: appState,
                     projectStore: projectStore,
                     worktreeStore: worktreeStore,
-                    projectGroupStore: projectGroupStore
+                    projectGroupStore: projectGroupStore,
+                    surfaceKey: surfaceKey
                 )
             )
         }
@@ -284,6 +285,27 @@ final class ExtensionBridgeHandler: NSObject, WKScriptMessageHandlerWithReply, B
             throw APIError.invalidArguments("background script unavailable")
         }
         return NSNull()
+    }
+
+    func deliverBrowserState(viewID: String, state: ExtensionBrowserState) {
+        guard let webView else { return }
+        let payload: [String: Any] = [
+            "url": state.url ?? NSNull(),
+            "title": state.title ?? NSNull(),
+            "canGoBack": state.canGoBack,
+            "canGoForward": state.canGoForward,
+            "isLoading": state.isLoading,
+            "progress": state.progress,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let literal = String(data: data, encoding: .utf8)
+        else { return }
+        let script = """
+        if (typeof window.__muxyBrowserState === 'function') {
+            window.__muxyBrowserState(\(jsLiteral(viewID)), \(literal));
+        }
+        """
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
     private func deliverEvent(_ event: ExtensionEvent) {

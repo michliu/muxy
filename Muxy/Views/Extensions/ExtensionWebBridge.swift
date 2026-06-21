@@ -104,6 +104,14 @@ enum ExtensionWebBridge {
                 }
             };
 
+            const browserViews = new Map();
+            let nextBrowserViewID = 1;
+
+            window.__muxyBrowserState = (viewID, state) => {
+                const view = browserViews.get(String(viewID));
+                if (view) view.__applyState(state);
+            };
+
             let beforeCloseHandler = null;
             window.__muxyResolveBeforeClose = (callID, prevent) => {
                 send('lifecycle.resolveBeforeClose', { callID: String(callID), prevent: !!prevent }).catch(() => {});
@@ -283,6 +291,114 @@ enum ExtensionWebBridge {
                         if (opts.body != null) payload.body = String(opts.body);
                         if (opts.timeoutMs != null) payload.timeoutMs = Number(opts.timeoutMs);
                         return send('http.fetch', payload);
+                    },
+                },
+                browser: {
+                    async init(element, options) {
+                        if (!element || typeof element.getBoundingClientRect !== 'function') {
+                            throw new Error('muxy.browser.init requires a DOM element');
+                        }
+                        const opts = options || {};
+                        const viewID = 'bv' + (nextBrowserViewID++);
+                        const measure = () => {
+                            const r = element.getBoundingClientRect();
+                            const visible = r.width > 0 && r.height > 0
+                                && r.bottom > 0 && r.right > 0
+                                && r.top < window.innerHeight && r.left < window.innerWidth;
+                            return {
+                                rect: { x: r.left, y: r.top, width: r.width, height: r.height },
+                                visible,
+                            };
+                        };
+
+                        let state = { url: null, title: null, canGoBack: false, canGoForward: false, isLoading: false, progress: 0 };
+                        const listeners = new Map();
+                        const emit = (name, payload) => {
+                            const set = listeners.get(name);
+                            if (!set) return;
+                            for (const cb of set) { try { cb(payload); } catch (_) {} }
+                        };
+
+                        const initial = measure();
+                        const attachPayload = { viewID, rect: initial.rect, visible: initial.visible };
+                        if (opts.profile != null) attachPayload.profile = String(opts.profile);
+                        if (opts.url != null) attachPayload.url = String(opts.url);
+                        state = await send('browser.attach', attachPayload);
+
+                        let frame = null;
+                        const sync = () => {
+                            frame = null;
+                            const m = measure();
+                            send('browser.updateRect', { viewID, rect: m.rect, visible: m.visible }).catch(() => {});
+                        };
+                        const schedule = () => {
+                            if (frame != null) return;
+                            frame = requestAnimationFrame(sync);
+                        };
+                        const resizeObserver = new ResizeObserver(schedule);
+                        resizeObserver.observe(element);
+                        window.addEventListener('scroll', schedule, true);
+                        window.addEventListener('resize', schedule, true);
+
+                        let destroyed = false;
+                        const handle = {
+                            get id() { return viewID; },
+                            get url() { return state.url; },
+                            get title() { return state.title; },
+                            get canGoBack() { return state.canGoBack; },
+                            get canGoForward() { return state.canGoForward; },
+                            get isLoading() { return state.isLoading; },
+                            get progress() { return state.progress; },
+                            __applyState(next) {
+                                state = next || state;
+                                emit('state', state);
+                                emit('did-navigate', { url: state.url });
+                                emit('title-changed', { title: state.title });
+                                emit('loading-changed', { isLoading: state.isLoading });
+                                emit('progress', { progress: state.progress });
+                            },
+                            loadURL(url) { return send('browser.navigate', { viewID, url: String(url) }); },
+                            goTo(url) { return send('browser.navigate', { viewID, url: String(url) }); },
+                            back() { return send('browser.back', { viewID }); },
+                            forward() { return send('browser.forward', { viewID }); },
+                            reload() { return send('browser.reload', { viewID }); },
+                            stop() { return send('browser.stop', { viewID }); },
+                            find(text) { return send('browser.find', { viewID, text: String(text == null ? '' : text) }); },
+                            executeJS(source) { return send('browser.execJS', { viewID, source: String(source) }); },
+                            show() { return send('browser.setVisible', { viewID, visible: true }); },
+                            hide() { return send('browser.setVisible', { viewID, visible: false }); },
+                            on(name, callback) {
+                                if (typeof callback !== 'function') return () => {};
+                                let set = listeners.get(name);
+                                if (!set) { set = new Set(); listeners.set(name, set); }
+                                set.add(callback);
+                                return () => { const s = listeners.get(name); if (s) s.delete(callback); };
+                            },
+                            sync,
+                            destroy() {
+                                if (destroyed) return Promise.resolve();
+                                destroyed = true;
+                                resizeObserver.disconnect();
+                                window.removeEventListener('scroll', schedule, true);
+                                window.removeEventListener('resize', schedule, true);
+                                browserViews.delete(viewID);
+                                return send('browser.detach', { viewID }).catch(() => {});
+                            },
+                        };
+                        browserViews.set(viewID, handle);
+                        return handle;
+                    },
+                    profiles: {
+                        list() { return send('browser.profiles.list', {}); },
+                        create(profile) { return send('browser.profiles.create', { profile: String(profile) }); },
+                        delete(profile) { return send('browser.profiles.delete', { profile: String(profile) }); },
+                        clear(profile) { return send('browser.profiles.clear', { profile: String(profile) }); },
+                        setCookies(profile, cookies) {
+                            return send('browser.profiles.setCookies', {
+                                profile: String(profile),
+                                cookies: Array.isArray(cookies) ? cookies : [],
+                            });
+                        },
                     },
                 },
                 worktrees: {
@@ -503,6 +619,8 @@ enum ExtensionWebBridge {
             Object.freeze(muxy.modal);
             Object.freeze(muxy.topbar);
             Object.freeze(muxy.statusbar);
+            Object.freeze(muxy.browser.profiles);
+            Object.freeze(muxy.browser);
             Object.freeze(muxy.worktrees);
             Object.freeze(muxy.agents);
             Object.freeze(muxy.git);

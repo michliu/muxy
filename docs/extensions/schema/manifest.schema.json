@@ -149,7 +149,8 @@
         "panels:write",
         "commands:run-script",
         "commands:exec",
-        "remote:serve"
+        "remote:serve",
+        "browser:embed"
       ]
     },
     "icon": {

@@ -24,19 +24,22 @@ enum MuxyAPIDispatcher {
         let projectStore: ProjectStore?
         let worktreeStore: WorktreeStore?
         var projectGroupStore: ProjectGroupStore?
+        var surfaceKey: LifecycleSurfaceKey?
 
         init(
             extensionID: String,
             appState: AppState,
             projectStore: ProjectStore?,
             worktreeStore: WorktreeStore?,
-            projectGroupStore: ProjectGroupStore?
+            projectGroupStore: ProjectGroupStore?,
+            surfaceKey: LifecycleSurfaceKey? = nil
         ) {
             self.extensionID = extensionID
             self.appState = appState
             self.projectStore = projectStore
             self.worktreeStore = worktreeStore
             self.projectGroupStore = projectGroupStore
+            self.surfaceKey = surfaceKey
         }
 
         init(extensionID: String, appState: AppState, stores: ExtensionAPIStores) {
@@ -296,6 +299,58 @@ enum MuxyAPIDispatcher {
             if verb.hasPrefix("files.") {
                 return try await handleFiles(verb: verb, args: args, context: context)
             }
+            if verb.hasPrefix("browser.") {
+                return try await handleBrowser(verb: verb, args: args, context: context)
+            }
+            throw APIError.invalidArguments("unknown verb \(verb)")
+        }
+    }
+
+    private static func handleBrowser(verb: String, args: [String: Any], context: Context) async throws -> Any {
+        let extensionID = context.extensionID
+        let surfaceKey = context.surfaceKey
+        switch verb {
+        case "browser.attach":
+            return try await MuxyAPI.Browser.attach(extensionID: extensionID, surfaceKey: surfaceKey, args: args)
+        case "browser.updateRect":
+            try MuxyAPI.Browser.updateRect(surfaceKey: surfaceKey, args: args)
+            return NSNull()
+        case "browser.setVisible":
+            try MuxyAPI.Browser.setVisible(surfaceKey: surfaceKey, args: args)
+            return NSNull()
+        case "browser.navigate":
+            try MuxyAPI.Browser.navigate(surfaceKey: surfaceKey, args: args)
+            return NSNull()
+        case "browser.back",
+             "browser.forward",
+             "browser.reload",
+             "browser.stop":
+            let command = String(verb.dropFirst("browser.".count))
+            try MuxyAPI.Browser.command(surfaceKey: surfaceKey, command: command, args: args)
+            return NSNull()
+        case "browser.find":
+            try MuxyAPI.Browser.find(surfaceKey: surfaceKey, args: args)
+            return NSNull()
+        case "browser.execJS":
+            return try await MuxyAPI.Browser.executeJS(surfaceKey: surfaceKey, args: args)
+        case "browser.detach":
+            try MuxyAPI.Browser.detach(surfaceKey: surfaceKey, args: args)
+            return NSNull()
+        case "browser.profiles.list":
+            return MuxyAPI.Browser.profilesList(extensionID: extensionID)
+        case "browser.profiles.create":
+            try MuxyAPI.Browser.profilesCreate(extensionID: extensionID, args: args)
+            return NSNull()
+        case "browser.profiles.delete":
+            try await MuxyAPI.Browser.profilesDelete(extensionID: extensionID, args: args)
+            return NSNull()
+        case "browser.profiles.clear":
+            try await MuxyAPI.Browser.profilesClear(extensionID: extensionID, args: args)
+            return NSNull()
+        case "browser.profiles.setCookies":
+            try await MuxyAPI.Browser.profilesSetCookies(extensionID: extensionID, args: args)
+            return NSNull()
+        default:
             throw APIError.invalidArguments("unknown verb \(verb)")
         }
     }
