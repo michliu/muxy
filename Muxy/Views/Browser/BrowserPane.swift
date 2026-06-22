@@ -6,15 +6,21 @@ struct BrowserPane: View {
     let onFocus: () -> Void
 
     @Environment(AppState.self) private var appState
+    @Environment(\.overlayActive) private var overlayActive
     @FocusState private var addressFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             BrowserToolbar(state: state, addressFieldFocused: $addressFieldFocused)
-            BrowserWebView(state: state, focused: focused && !addressFieldFocused, appState: appState)
-                .id(state.profileID)
-                .contentShape(Rectangle())
-                .onTapGesture { onFocus() }
+            BrowserWebView(
+                state: state,
+                focused: focused && !addressFieldFocused,
+                overlayActive: overlayActive,
+                appState: appState
+            )
+            .id(state.profileID)
+            .contentShape(Rectangle())
+            .onTapGesture { onFocus() }
         }
         .background(MuxyTheme.bg)
         .background(shortcuts)

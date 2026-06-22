@@ -4,6 +4,7 @@ import WebKit
 struct BrowserWebView: NSViewRepresentable {
     let state: BrowserTabState
     let focused: Bool
+    let overlayActive: Bool
     let appState: AppState
 
     func makeCoordinator() -> Coordinator {
@@ -33,7 +34,7 @@ struct BrowserWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.applyPendingCommand(in: webView)
         context.coordinator.applyPendingNavigation(in: webView)
-        context.coordinator.applyFocusIfChanged(focused, in: webView)
+        context.coordinator.applyFocusIfChanged(focused, overlayActive: overlayActive, in: webView)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -47,6 +48,7 @@ struct BrowserWebView: NSViewRepresentable {
         private let appState: AppState
         private var observations: [NSKeyValueObservation] = []
         private var focused = false
+        private var overlayActive = false
 
         var tabID: UUID { state.id }
 
@@ -102,16 +104,21 @@ struct BrowserWebView: NSViewRepresentable {
             }
         }
 
-        func applyFocusIfChanged(_ focused: Bool, in webView: WKWebView) {
-            guard focused else {
-                self.focused = false
-                return
-            }
-            guard !self.focused, webView.window != nil else { return }
-            self.focused = true
+        func applyFocusIfChanged(_ focused: Bool, overlayActive: Bool, in webView: WKWebView) {
+            guard focused != self.focused || overlayActive != self.overlayActive else { return }
+            self.focused = focused
+            self.overlayActive = overlayActive
+            updateFirstResponder(for: webView)
+        }
+
+        private func updateFirstResponder(for webView: WKWebView) {
             DispatchQueue.main.async { [weak webView] in
                 guard let webView, let window = webView.window else { return }
-                window.makeFirstResponder(webView)
+                if self.focused, !self.overlayActive {
+                    window.makeFirstResponder(webView)
+                } else if window.firstResponder === webView {
+                    window.makeFirstResponder(nil)
+                }
             }
         }
     }

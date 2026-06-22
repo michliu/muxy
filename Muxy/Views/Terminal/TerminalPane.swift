@@ -299,6 +299,9 @@ struct TerminalBridge: NSViewRepresentable {
             }
         } else if !focused, wasFocused {
             nsView.notifySurfaceUnfocused()
+            if nsView.window?.firstResponder === nsView || nsView.window?.firstResponder === nsView.inputContext {
+                nsView.window?.makeFirstResponder(nil)
+            }
         }
     }
 
