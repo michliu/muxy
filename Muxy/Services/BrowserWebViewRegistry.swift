@@ -2,6 +2,11 @@ import Foundation
 import WebKit
 
 @MainActor
+protocol BrowserElementInspecting: AnyObject {
+    func inspectElement() -> Bool
+}
+
+@MainActor
 final class BrowserWebViewRegistry {
     static let shared = BrowserWebViewRegistry()
 
@@ -29,5 +34,11 @@ final class BrowserWebViewRegistry {
             return nil
         }
         return webView
+    }
+
+    @discardableResult
+    func inspectElement(for tabID: UUID) -> Bool {
+        guard let inspector = webView(for: tabID) as? any BrowserElementInspecting else { return false }
+        return inspector.inspectElement()
     }
 }

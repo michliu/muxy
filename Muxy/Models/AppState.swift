@@ -567,6 +567,20 @@ final class AppState {
         focusedArea(for: projectID)?.activeTab
     }
 
+    @discardableResult
+    func inspectActiveBrowserElement() -> Bool {
+        guard let projectID = activeProjectID,
+              let tab = activeTab(for: projectID),
+              let browserState = tab.content.browserState
+        else { return false }
+        if BrowserWebViewRegistry.shared.inspectElement(for: browserState.id) {
+            browserState.pendingCommand = nil
+        } else {
+            browserState.pendingCommand = .inspectElement
+        }
+        return true
+    }
+
     func togglePinActiveTab(projectID: UUID) {
         guard let area = focusedArea(for: projectID),
               let tabID = area.activeTabID

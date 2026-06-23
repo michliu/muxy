@@ -189,6 +189,8 @@ struct ShortcutActionDispatcher {
         case .toggleExtensionConsole:
             notificationCenter.post(name: .toggleExtensionConsole, object: nil)
             return true
+        case .inspectElement:
+            return appState.inspectActiveBrowserElement()
         case .navigateBack:
             guard appState.navigation.canGoBack else { return false }
             appState.goBack()

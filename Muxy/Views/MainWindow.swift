@@ -166,6 +166,7 @@ struct MainWindow: View {
         .environment(dragCoordinator)
         .background(MainWindowShortcutInterceptor(
             isTerminalFocused: { isTerminalPaneFocused },
+            isBrowserFocused: { isBrowserPaneFocused },
             onShortcut: { action in handleShortcutAction(action) },
             onCommandShortcut: { shortcut in handleCommandShortcut(shortcut) },
             onExtensionShortcut: { shortcut in handleExtensionShortcut(shortcut) },
@@ -995,6 +996,13 @@ struct MainWindow: View {
         return appState.activeTab(for: projectID)?.content.pane != nil
     }
 
+    private var isBrowserPaneFocused: Bool {
+        guard browserEnabled,
+              let projectID = appState.activeProjectID
+        else { return false }
+        return appState.activeTab(for: projectID)?.content.browserState != nil
+    }
+
     private func handleShortcutAction(_ action: ShortcutAction) -> Bool {
         if action == .toggleVoiceRecording {
             return openVoiceRecorder()
@@ -1454,6 +1462,7 @@ private struct NavigationArrowButton: View {
 
 private struct MainWindowShortcutInterceptor: NSViewRepresentable {
     let isTerminalFocused: () -> Bool
+    let isBrowserFocused: () -> Bool
     let onShortcut: (ShortcutAction) -> Bool
     let onCommandShortcut: (CommandShortcut) -> Bool
     let onExtensionShortcut: (ExtensionShortcut) -> Bool
@@ -1463,6 +1472,7 @@ private struct MainWindowShortcutInterceptor: NSViewRepresentable {
     func makeNSView(context: Context) -> ShortcutInterceptingView {
         let view = ShortcutInterceptingView()
         view.isTerminalFocused = isTerminalFocused
+        view.isBrowserFocused = isBrowserFocused
         view.onShortcut = onShortcut
         view.onCommandShortcut = onCommandShortcut
         view.onExtensionShortcut = onExtensionShortcut
@@ -1473,6 +1483,7 @@ private struct MainWindowShortcutInterceptor: NSViewRepresentable {
 
     func updateNSView(_ nsView: ShortcutInterceptingView, context: Context) {
         nsView.isTerminalFocused = isTerminalFocused
+        nsView.isBrowserFocused = isBrowserFocused
         nsView.onShortcut = onShortcut
         nsView.onCommandShortcut = onCommandShortcut
         nsView.onExtensionShortcut = onExtensionShortcut
@@ -1483,6 +1494,7 @@ private struct MainWindowShortcutInterceptor: NSViewRepresentable {
 
 private final class ShortcutInterceptingView: NSView {
     var isTerminalFocused: (() -> Bool)?
+    var isBrowserFocused: (() -> Bool)?
     var onShortcut: ((ShortcutAction) -> Bool)?
     var onCommandShortcut: ((CommandShortcut) -> Bool)?
     var onExtensionShortcut: ((ExtensionShortcut) -> Bool)?
@@ -1503,7 +1515,11 @@ private final class ShortcutInterceptingView: NSView {
     }
 
     private func handleShortcutEvent(_ event: NSEvent) -> Bool {
-        let scopes = ShortcutContext.activeScopes(for: window, isTerminalFocused: isTerminalFocused?() ?? false)
+        let scopes = ShortcutContext.activeScopes(
+            for: window,
+            isTerminalFocused: isTerminalFocused?() ?? false,
+            isBrowserFocused: isBrowserFocused?() ?? false
+        )
         let layerWasActive = CommandShortcutStore.shared.isLayerActive
         guard layerWasActive
             || !event.modifierFlags.isDisjoint(with: [.command, .control, .option])

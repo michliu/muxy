@@ -66,6 +66,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case toggleVoiceRecording
     case toggleFullScreen
     case toggleExtensionConsole
+    case inspectElement
 
     static let allCases: [Self] = [
         .newTab,
@@ -125,6 +126,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         .toggleVoiceRecording,
         .toggleFullScreen,
         .toggleExtensionConsole,
+        .inspectElement,
     ]
 
     var id: String { rawValue }
@@ -225,6 +227,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
                 category: "Extensions",
                 scope: .mainWindow
             )
+        case .inspectElement: ShortcutMetadata(displayName: "Inspect Element", category: "Browser", scope: .browser)
         }
     }
 
@@ -233,7 +236,18 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     var scope: ShortcutScope { metadata.scope }
 
     static var categories: [String] {
-        ["Tabs", "Panes", "Tab Navigation", "Project Navigation", "Navigation", "Terminal", "Rich Input", "App", "Extensions"]
+        [
+            "Tabs",
+            "Panes",
+            "Tab Navigation",
+            "Project Navigation",
+            "Navigation",
+            "Browser",
+            "Terminal",
+            "Rich Input",
+            "App",
+            "Extensions",
+        ]
     }
 
     static func tabAction(for index: Int) -> Self? {
@@ -349,5 +363,6 @@ struct KeyBinding: Codable, Identifiable {
         Self(action: .toggleVoiceRecording, combo: KeyCombo(key: "i", command: true, shift: true)),
         Self(action: .toggleFullScreen, combo: KeyCombo(key: "f", command: true, control: true)),
         Self(action: .toggleExtensionConsole, combo: KeyCombo(key: "`", command: true)),
+        Self(action: .inspectElement, combo: KeyCombo(key: "i", command: true, option: true)),
     ]
 }

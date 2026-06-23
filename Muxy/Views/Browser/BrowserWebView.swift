@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import WebKit
 
@@ -16,10 +17,12 @@ struct BrowserWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.websiteDataStore = BrowserDataStoreCache.shared.store(for: state.profileID)
+        BrowserInspectableWebView.enableInspection(in: config)
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = BrowserInspectableWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
+        webView.isInspectable = true
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
 
@@ -146,6 +149,8 @@ struct BrowserWebView: NSViewRepresentable {
             case .zoomIn: applyZoom(BrowserZoom.zoomIn(state.pageZoom), to: webView)
             case .zoomOut: applyZoom(BrowserZoom.zoomOut(state.pageZoom), to: webView)
             case .zoomReset: applyZoom(BrowserZoom.defaultValue, to: webView)
+            case .inspectElement:
+                _ = (webView as? BrowserInspectableWebView)?.inspectElement()
             }
         }
 
@@ -190,6 +195,18 @@ struct BrowserWebView: NSViewRepresentable {
 }
 
 extension BrowserWebView.Coordinator: WKNavigationDelegate, WKUIDelegate {
+    @objc(_webView:getContextMenuFromProposedMenu:forElement:userInfo:completionHandler:)
+    func webView(
+        _ webView: WKWebView,
+        getContextMenuFromProposedMenu menu: NSMenu,
+        forElement _: Any,
+        userInfo _: Any,
+        completionHandler: @escaping (NSMenu) -> Void
+    ) {
+        (webView as? BrowserInspectableWebView)?.addInspectElementItem(to: menu)
+        completionHandler(menu)
+    }
+
     func webView(_: WKWebView, didStartProvisionalNavigation _: WKNavigation!) {
         state.loadError = nil
     }

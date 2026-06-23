@@ -12,6 +12,7 @@ final class BrowserTabState: Identifiable {
         case zoomIn
         case zoomOut
         case zoomReset
+        case inspectElement
     }
 
     struct FindRequest: Equatable {

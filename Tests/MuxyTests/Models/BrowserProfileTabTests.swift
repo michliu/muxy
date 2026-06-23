@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import WebKit
 
 @testable import Muxy
 
@@ -109,4 +110,102 @@ struct BrowserProfileTabTests {
         let restored = TerminalTab(restoring: snapshot)
         #expect(restored.content.browserState?.profileID == BrowserProfile.defaultID)
     }
+
+    @Test("active browser inspect request uses registered web view")
+    func inspectActiveBrowserElementUsesRegisteredWebView() {
+        let projectID = UUID()
+        let worktreeID = UUID()
+        let appState = AppState(
+            selectionStore: SelectionStoreStub(),
+            terminalViews: TerminalViewRemovingStub(),
+            workspacePersistence: WorkspacePersistenceStub()
+        )
+        appState.activeProjectID = projectID
+        appState.activeWorktreeID[projectID] = worktreeID
+
+        let key = WorktreeKey(projectID: projectID, worktreeID: worktreeID)
+        let browserState = BrowserTabState(projectPath: testPath, url: URL(string: "https://muxy.app"))
+        let area = TabArea(projectPath: testPath, existingTab: TerminalTab(browserState: browserState))
+        appState.workspaceRoots[key] = .tabArea(area)
+        appState.focusedAreaID[key] = area.id
+
+        let webView = InspectingWebViewStub(frame: .zero)
+        BrowserWebViewRegistry.shared.register(webView, for: browserState.id)
+        defer { BrowserWebViewRegistry.shared.unregister(browserState.id) }
+
+        #expect(appState.inspectActiveBrowserElement())
+        #expect(webView.inspectCount == 1)
+        #expect(browserState.pendingCommand == nil)
+    }
+
+    @Test("active browser inspect request without a live web view becomes pending command")
+    func inspectActiveBrowserElementSetsPendingCommand() {
+        let projectID = UUID()
+        let worktreeID = UUID()
+        let appState = AppState(
+            selectionStore: SelectionStoreStub(),
+            terminalViews: TerminalViewRemovingStub(),
+            workspacePersistence: WorkspacePersistenceStub()
+        )
+        appState.activeProjectID = projectID
+        appState.activeWorktreeID[projectID] = worktreeID
+
+        let key = WorktreeKey(projectID: projectID, worktreeID: worktreeID)
+        let browserState = BrowserTabState(projectPath: testPath, url: URL(string: "https://muxy.app"))
+        let area = TabArea(projectPath: testPath, existingTab: TerminalTab(browserState: browserState))
+        appState.workspaceRoots[key] = .tabArea(area)
+        appState.focusedAreaID[key] = area.id
+
+        #expect(appState.inspectActiveBrowserElement())
+        #expect(browserState.pendingCommand == .inspectElement)
+    }
+
+    @Test("active non-browser inspect request is ignored")
+    func inspectActiveBrowserElementIgnoresTerminalTab() {
+        let projectID = UUID()
+        let worktreeID = UUID()
+        let appState = AppState(
+            selectionStore: SelectionStoreStub(),
+            terminalViews: TerminalViewRemovingStub(),
+            workspacePersistence: WorkspacePersistenceStub()
+        )
+        appState.activeProjectID = projectID
+        appState.activeWorktreeID[projectID] = worktreeID
+
+        let key = WorktreeKey(projectID: projectID, worktreeID: worktreeID)
+        let area = TabArea(projectPath: testPath)
+        appState.workspaceRoots[key] = .tabArea(area)
+        appState.focusedAreaID[key] = area.id
+
+        #expect(!appState.inspectActiveBrowserElement())
+    }
+}
+
+private final class WorkspacePersistenceStub: WorkspacePersisting {
+    func loadWorkspaces() throws -> [WorkspaceSnapshot] { [] }
+    func saveWorkspaces(_: [WorkspaceSnapshot]) throws {}
+}
+
+@MainActor
+private final class InspectingWebViewStub: WKWebView, BrowserElementInspecting {
+    var inspectCount = 0
+
+    func inspectElement() -> Bool {
+        inspectCount += 1
+        return true
+    }
+}
+
+@MainActor
+private final class SelectionStoreStub: ActiveProjectSelectionStoring {
+    func loadActiveProjectID() -> UUID? { nil }
+    func saveActiveProjectID(_: UUID?) {}
+    func loadActiveWorktreeIDs() -> [UUID: UUID] { [:] }
+    func saveActiveWorktreeIDs(_: [UUID: UUID]) {}
+}
+
+@MainActor
+private final class TerminalViewRemovingStub: TerminalViewRemoving {
+    func removeView(for _: UUID) {}
+    func needsConfirmQuit(for _: UUID) -> Bool { false }
 }
