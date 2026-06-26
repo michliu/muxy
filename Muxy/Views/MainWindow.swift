@@ -1029,6 +1029,13 @@ struct MainWindow: View {
     }
 
     private func handleExtensionShortcut(_ shortcut: ExtensionShortcut) -> Bool {
+        if shortcut.source == .runtime {
+            ExtensionStore.shared.triggerRuntimeShortcut(
+                extensionID: shortcut.extensionID,
+                commandID: shortcut.commandID
+            )
+            return true
+        }
         ExtensionStore.shared.triggerCommand(.init(
             extensionID: shortcut.extensionID,
             commandID: shortcut.commandID,
