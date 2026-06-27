@@ -93,6 +93,7 @@ enum ExtensionWebBridge {
                 if (o.placeholder != null) labels.placeholder = String(o.placeholder);
                 if (o.emptyLabel != null) labels.emptyLabel = String(o.emptyLabel);
                 if (o.noMatchLabel != null) labels.noMatchLabel = String(o.noMatchLabel);
+                if (typeof o.onQuery === 'function' || typeof o.onQueryChange === 'function') labels.dynamic = true;
                 return labels;
             };
 
@@ -103,15 +104,22 @@ enum ExtensionWebBridge {
                     try { callback(payload || {}); } catch (_) {}
                 }
             };
-
             const modalQueryHandlers = new Map();
-            window.__muxyDeliverModalQuery = async (requestID, queryID, query) => {
+            let activeModalQueryID = null;
+            window.__muxyDeliverModalQuery = async (requestID, queryID, query, options) => {
                 const key = String(requestID);
                 const handler = modalQueryHandlers.get(key);
                 const emit = (batch) => send('modal.feed', { items: normalizeModalItems(batch), queryID });
                 try {
                     if (typeof handler === 'function') {
-                        const produced = await handler(query, emit);
+                        const previousModalQueryID = activeModalQueryID;
+                        activeModalQueryID = queryID;
+                        let produced;
+                        try {
+                            produced = await handler(query, emit, options || {});
+                        } finally {
+                            activeModalQueryID = previousModalQueryID;
+                        }
                         if (produced != null) await emit(produced);
                     }
                 } catch (error) {
@@ -290,11 +298,14 @@ enum ExtensionWebBridge {
                     async open(opts) {
                         const o = opts || {};
                         const labels = modalLabels(o);
-                        if (typeof o.onQuery === 'function') labels.dynamic = true;
                         const opened = await send('modal.open', labels);
                         const requestID = opened && opened.requestID;
-                        if (requestID != null && typeof o.onQuery === 'function') {
-                            modalQueryHandlers.set(String(requestID), o.onQuery);
+                        if (requestID != null) {
+                            if (typeof o.onQuery === 'function') {
+                                modalQueryHandlers.set(String(requestID), o.onQuery);
+                            } else if (typeof o.onQueryChange === 'function') {
+                                modalQueryHandlers.set(String(requestID), (query, emit, options) => o.onQueryChange(query, options || {}));
+                            }
                         }
                         const emit = (batch) => send('modal.feed', { items: normalizeModalItems(batch) });
                         try {
@@ -311,6 +322,16 @@ enum ExtensionWebBridge {
                         } finally {
                             if (requestID != null) modalQueryHandlers.delete(String(requestID));
                         }
+                    },
+                    async feed(items) {
+                        const payload = { items: normalizeModalItems(items) };
+                        if (activeModalQueryID != null) payload.queryID = activeModalQueryID;
+                        return await send('modal.feed', payload);
+                    },
+                    async finish() {
+                        const payload = {};
+                        if (activeModalQueryID != null) payload.queryID = activeModalQueryID;
+                        return await send('modal.finish', payload);
                     },
                 },
                 topbar: {

@@ -1,5 +1,19 @@
 import Foundation
 
+struct ExtensionModalSearchOptions: Equatable {
+    var caseSensitive = false
+    var wholeWord = false
+    var regex = false
+
+    var payload: [String: Bool] {
+        [
+            "caseSensitive": caseSensitive,
+            "wholeWord": wholeWord,
+            "regex": regex,
+        ]
+    }
+}
+
 @MainActor
 @Observable
 final class ExtensionModalService {
@@ -15,7 +29,7 @@ final class ExtensionModalService {
             self.id = id
             self.title = title
             self.subtitle = subtitle
-            haystack = (subtitle.map { "\(title)\n\($0)" } ?? title).lowercased()
+            haystack = subtitle.map { "\(title)\n\($0)" } ?? title
         }
     }
 
@@ -67,6 +81,7 @@ final class ExtensionModalService {
         let emptyLabel: String
         let noMatchLabel: String
         let dynamic: Bool
+        let searchToolbar: Bool
         let dataset: Dataset
 
         static func == (lhs: Request, rhs: Request) -> Bool {
@@ -74,62 +89,112 @@ final class ExtensionModalService {
         }
     }
 
+    enum SessionState: Equatable {
+        case open
+        case feeding
+        case queryable
+        case finished
+    }
+
     static let maxItems = 100_000
     static let maxTextLength = 200
     static let pageSize = 100
 
     private(set) var active: Request?
+    private(set) var state: SessionState = .finished
     private var sequence = 0
     private var session: Dataset?
     private var onResolve: ((Item?) -> Void)?
-    private var onQuery: ((Int, String) -> Void)?
+    private var onQuery: ((Int, String, ExtensionModalSearchOptions) -> Void)?
     private var queryID = 0
+    private var lastQueryPayload: QueryPayload?
+    private var callbackQueryID: Int?
     private var pendingRequestID: String?
     private var bufferedResults: [String: Item?] = [:]
 
+    private struct QueryPayload: Equatable {
+        let query: String
+        let options: ExtensionModalSearchOptions
+    }
+
     @discardableResult
-    func openSession(extensionID: String, args: [String: Any]) -> String {
+    func openSession(
+        extensionID: String,
+        args: [String: Any],
+        onQueryChange: ((String, ExtensionModalSearchOptions) -> Void)? = nil
+    ) -> String {
         sequence += 1
         let dataset = Dataset()
+        let isDynamic = ((args["dynamic"] as? Bool) ?? false) || onQueryChange != nil
         let request = Request(
             id: "\(extensionID):\(sequence)",
             extensionID: extensionID,
             placeholder: text(args, "placeholder") ?? "Search...",
             emptyLabel: text(args, "emptyLabel") ?? "No items",
             noMatchLabel: text(args, "noMatchLabel") ?? "No matches",
-            dynamic: (args["dynamic"] as? Bool) ?? false,
+            dynamic: isDynamic,
+            searchToolbar: (args["searchToolbar"] as? Bool) ?? false,
             dataset: dataset
         )
         resolve(with: nil)
         bufferedResults.removeAll()
         onQuery = nil
         queryID = 0
+        lastQueryPayload = nil
         session = dataset
         active = request
         pendingRequestID = request.id
+        state = isDynamic ? .queryable : .feeding
+        if let onQueryChange {
+            onQuery = { _, query, options in onQueryChange(query, options) }
+        }
         return request.id
     }
 
     func feedSession(_ items: [Item], queryID: Int? = nil) {
-        guard isCurrentQuery(queryID) else { return }
+        guard isCurrentQuery(queryID ?? callbackQueryID) else { return }
         session?.append(items)
     }
 
     func finishSession(queryID: Int? = nil) {
-        guard isCurrentQuery(queryID) else { return }
+        guard isCurrentQuery(queryID ?? callbackQueryID) else { return }
         session?.finish()
+        if state == .feeding {
+            state = .finished
+        }
     }
 
-    func onQueryRequest(requestID: String, _ handler: @escaping (Int, String) -> Void) {
+    static let maxQueryLength = 500
+
+    func queryChanged(_ query: String, options: ExtensionModalSearchOptions = .init()) {
+        requestQuery(query: query, options: options)
+    }
+
+    func isQueryable(_ requestID: String) -> Bool {
+        active?.id == requestID && state == .queryable
+    }
+
+    func onQueryRequest(
+        requestID: String,
+        _ handler: @escaping (Int, String, ExtensionModalSearchOptions) -> Void
+    ) {
         guard active?.id == requestID else { return }
         onQuery = handler
     }
 
-    func requestQuery(query: String) {
+    func requestQuery(query: String, options: ExtensionModalSearchOptions = .init()) {
         guard let request = active, request.dynamic, let handler = onQuery else { return }
+        let sanitized = String(query.prefix(Self.maxQueryLength))
+            .replacingOccurrences(of: "\u{0000}", with: "")
+        let payload = QueryPayload(query: sanitized, options: options)
+        guard payload != lastQueryPayload else { return }
+        lastQueryPayload = payload
         queryID += 1
         request.dataset.reset()
-        handler(queryID, query)
+        let currentQueryID = queryID
+        callbackQueryID = currentQueryID
+        handler(currentQueryID, sanitized, options)
+        callbackQueryID = nil
     }
 
     private func isCurrentQuery(_ id: Int?) -> Bool {
@@ -162,19 +227,123 @@ final class ExtensionModalService {
         return await awaitSelection(requestID: requestID)
     }
 
-    func page(for request: Request, query: String, offset: Int, limit: Int) -> Page {
-        Self.window(request.dataset.items, query: query, offset: offset, limit: limit)
+    func page(
+        for request: Request,
+        query: String,
+        options: ExtensionModalSearchOptions = .init(),
+        offset: Int,
+        limit: Int
+    ) -> Page {
+        if request.dynamic {
+            let items = request.dataset.items
+            let pageOffset = max(offset, 0)
+            let pageLimit = max(limit, 0)
+            let window = items.dropFirst(pageOffset).prefix(pageLimit)
+            return Page(items: Array(window), hasMore: pageOffset + window.count < items.count)
+        }
+        return Self.window(request.dataset.items, query: query, options: options, offset: offset, limit: limit)
     }
 
-    private static func window(_ items: [Item], query: String, offset: Int, limit: Int) -> Page {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let filtered = trimmed.isEmpty ? items : items.filter { matches($0, trimmed) }
-        let window = filtered.dropFirst(offset).prefix(limit)
-        return Page(items: Array(window), hasMore: offset + window.count < filtered.count)
+    private static func window(
+        _ items: [Item],
+        query: String,
+        options: ExtensionModalSearchOptions,
+        offset: Int,
+        limit: Int
+    ) -> Page {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pageOffset = max(offset, 0)
+        let pageLimit = max(limit, 0)
+        guard !trimmed.isEmpty else {
+            let window = items.dropFirst(pageOffset).prefix(pageLimit)
+            return Page(items: Array(window), hasMore: pageOffset + window.count < items.count)
+        }
+        guard let matcher = matcher(for: trimmed, options: options) else { return Page(items: [], hasMore: false) }
+
+        var skipped = 0
+        var pageItems: [Item] = []
+        pageItems.reserveCapacity(pageLimit)
+        for item in items where matcher(item) {
+            if skipped < pageOffset {
+                skipped += 1
+                continue
+            }
+            guard pageItems.count < pageLimit else {
+                return Page(items: pageItems, hasMore: true)
+            }
+            pageItems.append(item)
+        }
+        return Page(items: pageItems, hasMore: false)
     }
 
-    private static func matches(_ item: Item, _ needle: String) -> Bool {
-        item.haystack.contains(needle)
+    static let maxRegexPatternLength = 200
+    static let maxRegexScanDuration: TimeInterval = 0.1
+
+    private static func matcher(for needle: String, options: ExtensionModalSearchOptions) -> ((Item) -> Bool)? {
+        if options.regex {
+            guard needle.count <= maxRegexPatternLength else { return nil }
+            let pattern = options.wholeWord ? "(?<![\\p{L}\\p{N}_])(?:\(needle))(?![\\p{L}\\p{N}_])" : needle
+            let regexOptions: NSRegularExpression.Options = options.caseSensitive ? [] : [.caseInsensitive]
+            guard let expression = try? NSRegularExpression(pattern: pattern, options: regexOptions) else { return nil }
+            let deadline = Date().addingTimeInterval(maxRegexScanDuration)
+            return { item in regexMatches(expression, in: item.haystack, deadline: deadline) }
+        }
+        return { item in literalMatches(item.haystack, needle: needle, options: options) }
+    }
+
+    private static func regexMatches(
+        _ expression: NSRegularExpression,
+        in haystack: String,
+        deadline: Date
+    ) -> Bool {
+        guard Date() < deadline else { return false }
+        let range = NSRange(haystack.startIndex ..< haystack.endIndex, in: haystack)
+        var matched = false
+        expression.enumerateMatches(in: haystack, options: .reportProgress, range: range) { result, _, stop in
+            if result != nil {
+                matched = true
+                stop.pointee = true
+                return
+            }
+            if Date() >= deadline {
+                stop.pointee = true
+            }
+        }
+        return matched
+    }
+
+    private static func literalMatches(
+        _ haystack: String,
+        needle: String,
+        options: ExtensionModalSearchOptions
+    ) -> Bool {
+        let compareOptions: String.CompareOptions = options.caseSensitive ? [] : [.caseInsensitive]
+        guard options.wholeWord else {
+            return haystack.range(of: needle, options: compareOptions) != nil
+        }
+
+        var searchRange = haystack.startIndex ..< haystack.endIndex
+        while let range = haystack.range(of: needle, options: compareOptions, range: searchRange) {
+            if isWholeWord(range, in: haystack) {
+                return true
+            }
+            searchRange = range.upperBound ..< haystack.endIndex
+        }
+        return false
+    }
+
+    private static func isWholeWord(_ range: Range<String.Index>, in haystack: String) -> Bool {
+        let startsAtBoundary = range.lowerBound == haystack.startIndex
+            || !isWordCharacter(haystack[haystack.index(before: range.lowerBound)])
+        let endsAtBoundary = range.upperBound == haystack.endIndex
+            || !isWordCharacter(haystack[range.upperBound])
+        return startsAtBoundary && endsAtBoundary
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || $0 == "_"
+        }
     }
 
     func select(_ item: Item) {
@@ -195,10 +364,15 @@ final class ExtensionModalService {
         resolve(with: nil)
     }
 
-    func filter(_ query: String, in items: [Item]) -> [Item] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    func filter(
+        _ query: String,
+        in items: [Item],
+        options: ExtensionModalSearchOptions = .init()
+    ) -> [Item] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return items }
-        return items.filter { Self.matches($0, trimmed) }
+        guard let matcher = Self.matcher(for: trimmed, options: options) else { return [] }
+        return items.filter(matcher)
     }
 
     private func resolve(with item: Item?) {
@@ -206,7 +380,10 @@ final class ExtensionModalService {
         active = nil
         session = nil
         pendingRequestID = nil
+        state = .finished
         onQuery = nil
+        lastQueryPayload = nil
+        callbackQueryID = nil
         if let handler = onResolve {
             onResolve = nil
             handler(item)

@@ -259,7 +259,7 @@ final class HostBridge: @unchecked Sendable {
         let box = ContextBox(context)
         DispatchQueue.main.async {
             let deliver = box.context.objectForKeyedSubscript("__muxyDeliverModalQuery")
-            deliver?.call(withArguments: [parsed.requestID, parsed.queryID, parsed.query])
+            deliver?.call(withArguments: [parsed.requestID, parsed.queryID, parsed.query, parsed.options])
         }
     }
 

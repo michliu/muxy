@@ -219,16 +219,22 @@ final class ExtensionBridgeHandler: NSObject, WKScriptMessageHandlerWithReply, B
     }
 
     private func registerModalQueryPush(requestID: String) {
-        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { [weak self] queryID, query in
-            self?.deliverModalQuery(requestID: requestID, queryID: queryID, query: query)
+        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { [weak self] queryID, query, options in
+            self?.deliverModalQuery(requestID: requestID, queryID: queryID, query: query, options: options)
         }
     }
 
-    private func deliverModalQuery(requestID: String, queryID: Int, query: String) {
+    private func deliverModalQuery(
+        requestID: String,
+        queryID: Int,
+        query: String,
+        options: ExtensionModalSearchOptions
+    ) {
         guard let webView else { return }
+        let optionsLiteral = jsLiteral(payloadJSON: options.payload)
         let script = """
         if (typeof window.__muxyDeliverModalQuery === 'function') {
-            window.__muxyDeliverModalQuery(\(jsLiteral(requestID)), \(queryID), \(jsLiteral(query)));
+            window.__muxyDeliverModalQuery(\(jsLiteral(requestID)), \(queryID), \(jsLiteral(query)), \(optionsLiteral));
         }
         """
         webView.evaluateJavaScript(script, completionHandler: nil)
@@ -348,6 +354,13 @@ final class ExtensionBridgeHandler: NSObject, WKScriptMessageHandlerWithReply, B
     }
 
     private func jsLiteral(payloadJSON: [String: String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: payloadJSON),
+              let literal = String(data: data, encoding: .utf8)
+        else { return "{}" }
+        return literal
+    }
+
+    private func jsLiteral(payloadJSON: [String: Bool]) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: payloadJSON),
               let literal = String(data: data, encoding: .utf8)
         else { return "{}" }

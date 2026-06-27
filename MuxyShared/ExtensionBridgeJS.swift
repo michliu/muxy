@@ -25,6 +25,8 @@ public enum ExtensionBridgeJS {
                 if (o.placeholder != null) labels.placeholder = String(o.placeholder);
                 if (o.emptyLabel != null) labels.emptyLabel = String(o.emptyLabel);
                 if (o.noMatchLabel != null) labels.noMatchLabel = String(o.noMatchLabel);
+                if ('searchToolbar' in o) labels.searchToolbar = !!o.searchToolbar;
+                if (typeof o.onQuery === 'function' || typeof o.onQueryChange === 'function') labels.dynamic = true;
                 return labels;
             };
             const feedModalItems = (o) => {
@@ -39,6 +41,7 @@ public enum ExtensionBridgeJS {
             };
             const modalResultHandlers = {};
             const modalQueryHandlers = {};
+            let activeModalQueryID = null;
             this.__muxiDeliverModalResult = (requestID, item) => {
                 const handler = modalResultHandlers[requestID];
                 delete modalResultHandlers[requestID];
@@ -47,13 +50,23 @@ public enum ExtensionBridgeJS {
                     try { handler(item == null ? null : item); } catch (error) { console.error(error); }
                 }
             };
-            this.__muxyDeliverModalQuery = (requestID, queryID, query) => {
+            this.__muxyDeliverModalQuery = (requestID, queryID, query, options) => {
                 const handler = modalQueryHandlers[requestID];
                 const emit = (batch) => dispatch('modal.feed', { items: normalizeModalItems(batch), queryID });
                 const finish = () => dispatch('modal.finish', { queryID });
                 if (typeof handler !== 'function') { finish(); return; }
                 let produced;
-                try { produced = handler(query, emit); } catch (error) { console.error(error); finish(); return; }
+                const previousModalQueryID = activeModalQueryID;
+                activeModalQueryID = queryID;
+                try {
+                    produced = handler(query, emit, options || {});
+                } catch (error) {
+                    console.error(error);
+                    finish();
+                    return;
+                } finally {
+                    activeModalQueryID = previousModalQueryID;
+                }
                 if (produced != null) emit(produced);
                 finish();
             };
@@ -140,15 +153,28 @@ public enum ExtensionBridgeJS {
                     open(opts) {
                         const o = opts || {};
                         const labels = modalLabels(o);
-                        if (typeof o.onQuery === 'function') labels.dynamic = true;
                         const opened = dispatch('modal.open', labels);
                         const requestID = opened && opened.requestID;
                         if (requestID != null) {
                             if (typeof o.onSelect === 'function') modalResultHandlers[requestID] = o.onSelect;
-                            if (typeof o.onQuery === 'function') modalQueryHandlers[requestID] = o.onQuery;
+                            if (typeof o.onQuery === 'function') {
+                                modalQueryHandlers[requestID] = o.onQuery;
+                            } else if (typeof o.onQueryChange === 'function') {
+                                modalQueryHandlers[requestID] = (query, emit, options) => o.onQueryChange(query, options || {});
+                            }
                         }
                         feedModalItems(o);
                         return requestID;
+                    },
+                    feed(items) {
+                        const payload = { items: normalizeModalItems(items) };
+                        if (activeModalQueryID != null) payload.queryID = activeModalQueryID;
+                        return dispatch('modal.feed', payload);
+                    },
+                    finish() {
+                        const payload = {};
+                        if (activeModalQueryID != null) payload.queryID = activeModalQueryID;
+                        return dispatch('modal.finish', payload);
                     },
                 },
                 topbar: {

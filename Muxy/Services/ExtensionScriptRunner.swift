@@ -270,18 +270,29 @@ private final class ScriptBridge: @unchecked Sendable {
 
     @MainActor
     private func registerModalQueryDelivery(requestID: String) {
-        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { [weak self] queryID, query in
-            self?.deliverModalQuery(requestID: requestID, queryID: queryID, query: query)
+        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { [weak self] queryID, query, options in
+            self?.deliverModalQuery(requestID: requestID, queryID: queryID, query: query, options: options)
         }
     }
 
     @MainActor
-    private func deliverModalQuery(requestID: String, queryID: Int, query: String) {
+    private func deliverModalQuery(
+        requestID: String,
+        queryID: Int,
+        query: String,
+        options: ExtensionModalSearchOptions
+    ) {
         guard let queue = deliveryQueue, let context else { return }
-        let delivery = ModalQueryDeliveryBox(context: context, requestID: requestID, queryID: queryID, query: query)
+        let delivery = ModalQueryDeliveryBox(
+            context: context,
+            requestID: requestID,
+            queryID: queryID,
+            query: query,
+            options: options.payload
+        )
         queue.async {
             let deliver = delivery.context.objectForKeyedSubscript("__muxyDeliverModalQuery")
-            deliver?.call(withArguments: [delivery.requestID, delivery.queryID, delivery.query])
+            deliver?.call(withArguments: [delivery.requestID, delivery.queryID, delivery.query, delivery.options])
         }
     }
 
@@ -350,6 +361,7 @@ private struct ModalQueryDeliveryBox: @unchecked Sendable {
     let requestID: String
     let queryID: Int
     let query: String
+    let options: [String: Bool]
 }
 
 private final class ModalDeliveryCompletion: @unchecked Sendable {

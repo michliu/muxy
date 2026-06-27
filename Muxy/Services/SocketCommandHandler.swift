@@ -480,12 +480,13 @@ enum SocketCommandHandler {
     }
 
     private static func registerModalQueryPush(requestID: String, extensionID: String) {
-        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { queryID, query in
+        ExtensionModalService.shared.onQueryRequest(requestID: requestID) { queryID, query, options in
             NotificationSocketServer.shared.pushModalQuery(
                 extensionID: extensionID,
                 requestID: requestID,
                 queryID: queryID,
-                query: query
+                query: query,
+                options: options
             )
         }
     }
