@@ -197,7 +197,12 @@ final class TabArea: Identifiable {
     }
 
     func reorderTab(fromOffsets source: IndexSet, toOffset destination: Int) {
-        tabs.move(fromOffsets: source, toOffset: destination)
+        guard let from = source.first, from < tabs.count else { return }
+        let boundary = firstUnpinnedIndex
+        let lowerBound = tabs[from].isPinned ? 0 : boundary
+        let upperBound = tabs[from].isPinned ? boundary : tabs.count
+        let clamped = min(max(destination, lowerBound), upperBound)
+        tabs.move(fromOffsets: source, toOffset: clamped)
     }
 
     func removeTab(_ tabID: UUID) -> TerminalTab? {
@@ -235,6 +240,11 @@ final class TabArea: Identifiable {
     func setColorID(_ tabID: UUID, colorID: String?) {
         guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
         tab.colorID = colorID
+    }
+
+    func setCustomIcon(_ tabID: UUID, icon: String?) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        tab.customIcon = icon
     }
 
     func togglePin(_ tabID: UUID) {
