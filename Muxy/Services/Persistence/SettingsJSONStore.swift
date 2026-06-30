@@ -201,7 +201,6 @@ enum SettingsJSONStore {
         let allowedValues: [String: Set<String>] = [
             UpdateChannel.storageKey: Set(UpdateChannel.allCases.map(\.rawValue)),
             ProjectPickerPreferences.storageKey: Set(ProjectPickerMode.allCases.map(\.rawValue)),
-            SentryConsent.storageKey: Set(["", SentryConsent.allowed.rawValue, SentryConsent.denied.rawValue]),
             "muxy.ui.scale": Set(UIScale.Preset.allCases.map(\.rawValue)),
             SidebarCollapsedStyle.storageKey: Set(SidebarCollapsedStyle.allCases.map(\.rawValue)),
             SidebarExpandedStyle.storageKey: Set(SidebarExpandedStyle.allCases.map(\.rawValue)),
@@ -239,7 +238,6 @@ enum SettingsJSONStore {
     private static func currentValue(for item: SettingsCatalogItem) -> Any? {
         let settings = EditorSettings.shared
         return switch item.key {
-        case SentryConsent.storageKey: SentryService.shared.consent?.rawValue ?? ""
         case "muxy.ui.scale": UIScale.shared.preset.rawValue
         case "muxy.theme.light": ThemeService.shared.currentLightThemeName() ?? ThemeService.defaultThemeName
         case "muxy.theme.dark": ThemeService.shared.currentDarkThemeName() ?? ThemeService.defaultThemeName
@@ -285,13 +283,6 @@ enum SettingsJSONStore {
 
     private static func applySpecialSetting(key: String, value: Any) -> Bool {
         switch key {
-        case SentryConsent.storageKey:
-            guard let rawValue = value as? String else { return false }
-            if rawValue.isEmpty {
-                UserDefaults.standard.removeObject(forKey: key)
-            } else if let consent = SentryConsent(rawValue: rawValue) {
-                SentryService.shared.setConsent(consent)
-            }
         case "muxy.ui.scale":
             guard let rawValue = value as? String, let preset = UIScale.Preset(rawValue: rawValue) else { return false }
             UIScale.shared.preset = preset

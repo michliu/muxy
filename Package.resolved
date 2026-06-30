@@ -1,15 +1,6 @@
 {
-  "originHash" : "066ab307b4a0e89ca1cb729d2423eb57ebcd8a19de8762c00940d2cb612c1569",
+  "originHash" : "6acc2d5e25945e91910df10c4742fd33f071564b327a30dbca8d6c3e86f7a3fe",
   "pins" : [
-    {
-      "identity" : "sentry-cocoa",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/getsentry/sentry-cocoa",
-      "state" : {
-        "revision" : "cf44aa8cb4147f39e698c1f28be0b6b2c89f79d2",
-        "version" : "8.58.2"
-      }
-    },
     {
       "identity" : "sparkle",
       "kind" : "remoteSourceControl",

@@ -5,7 +5,6 @@ struct GeneralSettingsView: View {
     private var updateChannelRaw = UpdateChannel.stable.rawValue
     @AppStorage(QuitConfirmationPreferences.confirmQuitKey)
     private var confirmQuit = true
-    @State private var sentry = SentryService.shared
 
     var body: some View {
         SettingsContainer {
@@ -25,34 +24,13 @@ struct GeneralSettingsView: View {
                 }
             }
 
-            SettingsSection("Quit", showsDivider: sentry.hasDSN) {
+            SettingsSection("Quit", showsDivider: false) {
                 SettingsToggleRow(
                     label: "Confirm before quitting Muxy",
                     isOn: $confirmQuit
                 )
             }
-
-            if sentry.hasDSN {
-                SettingsSection(
-                    "Diagnostics",
-                    footer: "Anonymous crash reports help us fix bugs. "
-                        + "Reports never include project paths, file contents, or personal data.",
-                    showsDivider: false
-                ) {
-                    SettingsToggleRow(
-                        label: "Send anonymous crash reports",
-                        isOn: sentryConsentBinding
-                    )
-                }
-            }
         }
-    }
-
-    private var sentryConsentBinding: Binding<Bool> {
-        Binding(
-            get: { sentry.consent == .allowed },
-            set: { newValue in sentry.setConsent(newValue ? .allowed : .denied) }
-        )
     }
 
     private var channelBinding: Binding<UpdateChannel> {

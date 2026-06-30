@@ -271,14 +271,6 @@ enum SettingsCatalog {
             section: "Quit",
             defaultValue: true
         ),
-        SettingsCatalogItem(
-            key: "muxy.sentry.consent",
-            title: "Crash Reports",
-            description: "Controls anonymous crash report consent when diagnostics are available.",
-            category: .general,
-            section: "Diagnostics",
-            defaultValue: ""
-        ),
 
         SettingsCatalogItem(
             key: BrowserPreferences.searchEngineKey,
