@@ -83,6 +83,16 @@ struct MobileSettingsView: View {
                 }
             }
 
+            if service.isEnabled, let selectedHost {
+                let webURL = service.webURLString(host: selectedHost.host)
+                SettingsSection(
+                    "Web Terminal",
+                    footer: "Open this URL in a browser on the same network to control any terminal session. First use still needs your approval on this Mac."
+                ) {
+                    webTerminalCard(url: webURL)
+                }
+            }
+
             SettingsSection(
                 "Approved Devices",
                 footer: "Revoking removes the device's access. It will need to request approval again to reconnect.",
@@ -238,6 +248,37 @@ struct MobileSettingsView: View {
             }
 
             pairingLinkRow(uri: uri)
+        }
+        .padding(.horizontal, SettingsMetrics.horizontalPadding)
+        .padding(.vertical, SettingsMetrics.rowVerticalPadding)
+    }
+
+    private func webTerminalCard(url: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            MobilePairingQRView(uriString: url, size: 132)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Open in any browser on this network:")
+                    .font(.system(size: SettingsMetrics.labelFontSize))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(url)
+                    .font(.system(size: SettingsMetrics.labelFontSize, design: .monospaced))
+                    .foregroundStyle(SettingsStyle.foreground)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button {
+                    copyPairingLink(url)
+                } label: {
+                    Label(
+                        didCopyPairingLink ? "Copied" : "Copy URL",
+                        systemImage: didCopyPairingLink ? "checkmark" : "doc.on.doc"
+                    )
+                    .font(.system(size: SettingsMetrics.footnoteFontSize, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(MuxyTheme.accent)
+            }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, SettingsMetrics.horizontalPadding)
         .padding(.vertical, SettingsMetrics.rowVerticalPadding)
