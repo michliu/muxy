@@ -7,14 +7,19 @@ cd "$ROOT"
 
 USE_MERGE=false
 RUN_CHECKS=false
+DO_PUSH=false
+FORK_REMOTE="${MUXY_FORK_REMOTE:-fork}"
 for arg in "$@"; do
   case "$arg" in
     --merge) USE_MERGE=true ;;
     --check) RUN_CHECKS=true ;;
+    --push) DO_PUSH=true ;;
     -h | --help)
-      echo "Usage: scripts/sync-upstream.sh [--merge] [--check]"
+      echo "Usage: scripts/sync-upstream.sh [--merge] [--check] [--push]"
       echo "  --merge   Merge main into the current branch instead of rebasing"
       echo "  --check   Run scripts/checks.sh --fix after a successful sync"
+      echo "  --push    Back up the branch to your fork remote '$FORK_REMOTE' (force-with-lease)"
+      echo "            Override the remote name with MUXY_FORK_REMOTE=<name>"
       exit 0
       ;;
     *)
@@ -78,4 +83,17 @@ if [[ "$RUN_CHECKS" == true ]]; then
   else
     scripts/checks.sh --fix
   fi
+fi
+
+if [[ "$DO_PUSH" == true ]]; then
+  if ! git remote get-url "$FORK_REMOTE" >/dev/null 2>&1; then
+    echo "" >&2
+    echo "No remote named '$FORK_REMOTE'. Add your fork first, e.g.:" >&2
+    echo "  gh repo fork muxy-app/muxy --remote --remote-name $FORK_REMOTE --clone=false" >&2
+    echo "  # or: git remote add $FORK_REMOTE https://github.com/<you>/muxy.git" >&2
+    exit 1
+  fi
+  echo "==> Backing up '$BRANCH' to '$FORK_REMOTE' (force-with-lease)"
+  git push --force-with-lease "$FORK_REMOTE" "$BRANCH"
+  echo "==> Backed up to '$FORK_REMOTE/$BRANCH'"
 fi
