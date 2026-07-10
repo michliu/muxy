@@ -24,6 +24,36 @@ function deviceCreds() {
 function setStatus(text, connState) {
   document.getElementById("status-text").textContent = text;
   if (connState) document.getElementById("status").dataset.state = connState;
+  updateOverlay();
+}
+
+function overlaySub(connState) {
+  if (connState === "connecting") return "Approve this device on your Mac if prompted.";
+  if (connState === "error") return "Reconnecting automatically…";
+  if (state.projectID) return "Select or open a terminal session.";
+  if (state.projects.length) return "Pick a project on the left to begin.";
+  return "";
+}
+
+function updateOverlay() {
+  const overlay = document.getElementById("overlay");
+  if (!overlay) return;
+  overlay.innerHTML = "";
+  if (state.paneID) { overlay.classList.remove("show"); return; }
+  const connState = document.getElementById("status").dataset.state;
+  const box = document.createElement("div");
+  const glyph = document.createElement("div");
+  glyph.className = "overlay-glyph";
+  glyph.textContent = connState === "connected" ? "▚" : "▚▚";
+  const title = document.createElement("div");
+  title.className = "overlay-title";
+  title.textContent = document.getElementById("status-text").textContent || "Not connected";
+  const sub = document.createElement("div");
+  sub.className = "overlay-sub";
+  sub.textContent = overlaySub(connState);
+  box.append(glyph, title, sub);
+  overlay.appendChild(box);
+  overlay.classList.add("show");
 }
 
 function reportError(err) { setStatus(`Error: ${(err && err.message) || "failed"}`, "error"); }
@@ -306,6 +336,7 @@ function renderWorkspace() {
   container.appendChild(buildNode(state.workspace.root));
   placeTerminal();
   resizePane();
+  updateOverlay();
 }
 
 function buildNode(node) {
