@@ -1,4 +1,14 @@
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url("vendor/fonts/jetbrains-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url("vendor/fonts/jetbrains-mono-500.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 600;
+  font-display: swap; src: url("vendor/fonts/jetbrains-mono-600.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: italic; font-weight: 400;
+  font-display: swap; src: url("vendor/fonts/jetbrains-mono-400-italic.woff2") format("woff2"); }
+
 :root {
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --bg: #161619;
   --surface: #1d1d21;
   --surface-2: #26262c;
@@ -20,8 +30,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
-  font: 13px/1.5 -apple-system, "SF Pro Text", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased; }
+  font: 13px/1.5 var(--font-mono); -webkit-font-smoothing: antialiased; }
 ::selection { background: var(--accent-soft); }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -68,7 +77,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
 #overlay { position: absolute; inset: 0; display: none; place-items: center;
   background: var(--bg); text-align: center; padding: 24px; }
 #overlay.show { display: grid; }
-.overlay-glyph { font: 30px/1 "SF Mono", Menlo, monospace; color: var(--accent);
+.overlay-glyph { font: 30px/1 var(--font-mono); color: var(--accent);
   margin-bottom: var(--space-3); letter-spacing: 2px; }
 .overlay-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: var(--space-1); }
 .overlay-sub { font-size: 12px; color: var(--muted); max-width: 320px; }

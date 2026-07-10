@@ -181,7 +181,12 @@ function ensureTerminal(pairing) {
   if (state.term) return;
   const host = document.createElement("div");
   host.className = "term-host";
-  const term = new Terminal({ cursorBlink: true, fontFamily: "SF Mono, Menlo, monospace", fontSize: 13, allowProposedApi: true });
+  const term = new Terminal({
+    cursorBlink: true,
+    fontFamily: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace',
+    fontSize: 13,
+    allowProposedApi: true,
+  });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(host);
@@ -191,6 +196,7 @@ function ensureTerminal(pairing) {
   });
   window.addEventListener("resize", () => resizePane());
   state.term = term; state.fit = fit; state.termHost = host;
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => resizePane());
   if (pairing.themeFg !== undefined) applyTheme(pairing.themeFg, pairing.themeBg, pairing.themePalette);
 }
 
