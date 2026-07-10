@@ -1,6 +1,6 @@
 const state = {
   ws: null, clientID: null, reqId: 0, pending: new Map(),
-  projects: [], projectID: null, worktreeID: null, workspace: null,
+  projects: [], projectID: null, worktrees: [], worktreeID: null, workspace: null,
   paneID: null, term: null, fit: null, termHost: null,
 };
 
@@ -98,7 +98,8 @@ async function onAuthenticated(pairing) {
   ensureTerminal(pairing);
   state.projects = await request("listProjects");
   renderRail();
-  if (state.projectID) await selectProject(state.projectID);
+  const target = state.projectID || (state.projects[0] && state.projects[0].id);
+  if (target) await selectProject(target);
 }
 
 function onMessage(frame) {
@@ -122,7 +123,7 @@ function onEvent(payload) {
       if (data && data.paneID === state.paneID) writeBytes(data.bytes);
       break;
     case "workspaceChanged":
-      if (data && data.projectID === state.projectID) { state.workspace = data; renderWorkspace(); autoAttachFirst(); }
+      if (data && data.projectID === state.projectID) { state.workspace = data; renderWorkspace(); renderSidebar(); autoAttachFirst(); }
       break;
     case "themeChanged":
       if (data) applyTheme(data.fg, data.bg, data.palette);
@@ -193,13 +194,75 @@ function renderRail() {
 async function selectProject(projectID) {
   state.projectID = projectID;
   await request("selectProject", { projectID });
-  const worktrees = await request("listWorktrees", { projectID });
-  state.worktreeID = worktrees[0] ? worktrees[0].id : null;
+  state.worktrees = await request("listWorktrees", { projectID });
+  state.worktreeID = state.worktrees[0] ? state.worktrees[0].id : null;
   if (state.worktreeID) await request("selectWorktree", { projectID, worktreeID: state.worktreeID });
   state.workspace = await request("getWorkspace", { projectID });
   renderRail();
+  renderSidebar();
   renderWorkspace();
   autoAttachFirst();
+}
+
+async function switchWorktree(worktreeID) {
+  if (worktreeID === state.worktreeID) return;
+  if (state.paneID) {
+    try { await request("releasePane", { paneID: state.paneID }); } catch { setStatus("Release failed"); }
+    state.paneID = null;
+  }
+  state.worktreeID = worktreeID;
+  await request("selectWorktree", { projectID: state.projectID, worktreeID });
+  state.workspace = await request("getWorkspace", { projectID: state.projectID });
+  renderSidebar();
+  renderWorkspace();
+  autoAttachFirst();
+}
+
+function sidebarLabel(text) {
+  const el = document.createElement("div");
+  el.className = "sidebar-label";
+  el.textContent = text;
+  return el;
+}
+
+function renderSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  sidebar.innerHTML = "";
+  const project = state.projects.find((p) => p.id === state.projectID);
+  if (!project) return;
+
+  const header = document.createElement("div");
+  header.className = "sidebar-header";
+  header.textContent = project.name;
+  sidebar.appendChild(header);
+
+  if (state.worktrees.length > 1) {
+    sidebar.appendChild(sidebarLabel("Worktrees"));
+    state.worktrees.forEach((worktree) => {
+      const row = document.createElement("div");
+      row.className = "sidebar-row" + (worktree.id === state.worktreeID ? " active" : "");
+      row.textContent = worktree.name;
+      row.onclick = () => switchWorktree(worktree.id);
+      sidebar.appendChild(row);
+    });
+  }
+
+  sidebar.appendChild(sidebarLabel("Sessions"));
+  const tabs = state.workspace ? collectTabs(state.workspace.root, []) : [];
+  if (!tabs.length) {
+    const empty = document.createElement("div");
+    empty.className = "sidebar-empty";
+    empty.textContent = "No terminal sessions";
+    sidebar.appendChild(empty);
+    return;
+  }
+  tabs.forEach((tab) => {
+    const row = document.createElement("div");
+    row.className = "sidebar-row session" + (tab.paneID === state.paneID ? " active" : "");
+    row.textContent = tab.title || "Terminal";
+    row.onclick = () => attachPane(tab.paneID);
+    sidebar.appendChild(row);
+  });
 }
 
 function collectTabs(node, acc) {
@@ -310,6 +373,7 @@ async function attachPane(paneID) {
   state.paneID = paneID;
   state.term.reset();
   renderWorkspace();
+  renderSidebar();
   const { cols, rows } = state.term;
   try {
     await request("takeOverPane", { paneID, cols, rows });
