@@ -13,6 +13,9 @@ final class MobileServerService {
     static let defaultPort: UInt16 = AppEnvironment.isDevelopment
         ? MuxyRemoteServer.defaultPort + 1
         : MuxyRemoteServer.defaultPort
+    static let defaultWebPort: UInt16 = AppEnvironment.isDevelopment
+        ? MuxyWebServer.defaultPort + 3
+        : MuxyWebServer.defaultPort
     static let minPort: UInt16 = 1024
     static let maxPort: UInt16 = 65535
 
@@ -26,6 +29,12 @@ final class MobileServerService {
         AppEnvironment.isDevelopment
             ? "app.muxy.mobile.serverPort.dev"
             : "app.muxy.mobile.serverPort"
+    }
+
+    static var webPortKey: String {
+        AppEnvironment.isDevelopment
+            ? "app.muxy.mobile.webPort.dev"
+            : "app.muxy.mobile.webPort"
     }
 
     private(set) var isEnabled: Bool {
@@ -48,7 +57,12 @@ final class MobileServerService {
     private(set) var lastError: String?
     private(set) var isPortInUse = false
 
+    private(set) var webPort: UInt16 {
+        didSet { UserDefaults.standard.set(Int(webPort), forKey: Self.webPortKey) }
+    }
+
     private var server: MuxyRemoteServer?
+    private var webServer: MuxyWebServer?
     private var delegate: MuxyRemoteServerDelegate?
     private var delegateBuilder: ((MuxyRemoteServer) -> MuxyRemoteServerDelegate)?
     private var pendingServers: [MuxyRemoteServer] = []
@@ -65,6 +79,12 @@ final class MobileServerService {
             } else {
                 port = Self.defaultPort
             }
+        }
+        let storedWebPort = UserDefaults.standard.object(forKey: Self.webPortKey) as? Int
+        if let storedWebPort, let value = UInt16(exactly: storedWebPort), Self.isValid(port: value) {
+            webPort = value
+        } else {
+            webPort = Self.defaultWebPort
         }
         ApprovedDevicesStore.shared.onRevoke = { [weak self] deviceID in
             self?.server?.disconnect(deviceID: deviceID)
@@ -97,6 +117,7 @@ final class MobileServerService {
 
     func stopForTermination() {
         retireCurrentServer()
+        stopWebServer()
     }
 
     static func isValid(port: UInt16) -> Bool {
@@ -104,6 +125,7 @@ final class MobileServerService {
     }
 
     private func retireCurrentServer() {
+        stopWebServer()
         guard let current = server else { return }
         server = nil
         delegate = nil
@@ -152,12 +174,36 @@ final class MobileServerService {
             lastError = nil
             isPortInUse = false
             logger.info("Mobile server started on port \(port)")
+            startWebServer(wsPort: port)
         case let .failure(error):
             logger.error("Mobile server failed to start on port \(port): \(error.localizedDescription)")
             isPortInUse = Self.isAddressInUseError(error)
             retireCurrentServer()
             lastError = friendlyMessage(for: error, port: port)
         }
+    }
+
+    private func startWebServer(wsPort: UInt16) {
+        stopWebServer()
+        guard let root = WebTerminalResources.rootURL else {
+            logger.error("Web terminal resources missing")
+            return
+        }
+        let activePort = webPort
+        let config = WebTerminalConfig(wsPort: wsPort, serviceLabel: Host.current().localizedName ?? "Muxy")
+        let server = MuxyWebServer(port: activePort, resourceRoot: root, config: config)
+        webServer = server
+        server.start { result in
+            if case let .failure(error) = result {
+                logger.error("Web terminal server failed to start on port \(activePort): \(error.localizedDescription)")
+            }
+        }
+        logger.info("Web terminal server starting on port \(activePort)")
+    }
+
+    private func stopWebServer() {
+        webServer?.stop()
+        webServer = nil
     }
 
     private func friendlyMessage(for error: Error, port: UInt16) -> String {
@@ -231,5 +277,9 @@ final class MobileServerService {
             .split(whereSeparator: \.isWhitespace)
             .compactMap { Int32($0) }
             .filter { $0 > 0 }
+    }
+
+    func webURLString(host: String) -> String {
+        "http://\(host):\(webPort)"
     }
 }
