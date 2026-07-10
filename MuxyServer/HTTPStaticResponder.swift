@@ -27,7 +27,9 @@ public enum HTTPStaticResponder {
         }
 
         var relative = decoded
-        while relative.hasPrefix("/") { relative.removeFirst() }
+        while relative.hasPrefix("/") {
+            relative.removeFirst()
+        }
         if relative.isEmpty { relative = "index.html" }
 
         if relative == "config.json" {
@@ -40,7 +42,8 @@ public enum HTTPStaticResponder {
     public static func contentType(forPathExtension ext: String) -> String {
         switch ext.lowercased() {
         case "html": "text/html; charset=utf-8"
-        case "js", "mjs": "text/javascript; charset=utf-8"
+        case "js",
+             "mjs": "text/javascript; charset=utf-8"
         case "css": "text/css; charset=utf-8"
         case "json": "application/json; charset=utf-8"
         case "svg": "image/svg+xml"

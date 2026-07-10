@@ -88,7 +88,8 @@ struct MobileSettingsView: View {
                 let webURL = service.webURLString(host: selectedHost.host)
                 SettingsSection(
                     "Web Terminal",
-                    footer: "Open this URL in a browser on the same network to control any terminal session. First use still needs your approval on this Mac."
+                    footer: "Open this URL in a browser on the same network to control any terminal session. "
+                        + "First use still needs your approval on this Mac."
                 ) {
                     webTerminalCard(url: webURL)
                 }
