@@ -13,7 +13,10 @@
       <nav id="sidebar"></nav>
       <main id="main">
         <div id="workspace"></div>
-        <div id="status"></div>
+        <div id="status" data-state="idle">
+          <span id="conn-dot" aria-hidden="true"></span>
+          <span id="status-text"></span>
+        </div>
       </main>
     </div>
     <script src="vendor/xterm.min.js"></script>

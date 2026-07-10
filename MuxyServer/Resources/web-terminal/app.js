@@ -21,9 +21,23 @@ function deviceCreds() {
   return { id, token };
 }
 
-function setStatus(text) { document.getElementById("status").textContent = text; }
+function setStatus(text, connState) {
+  document.getElementById("status-text").textContent = text;
+  if (connState) document.getElementById("status").dataset.state = connState;
+}
 
-function reportError(err) { setStatus(`Error: ${(err && err.message) || "failed"}`); }
+function reportError(err) { setStatus(`Error: ${(err && err.message) || "failed"}`, "error"); }
+
+function activatable(el, handler) {
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  el.onclick = handler;
+  el.onkeydown = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    handler();
+  };
+}
 
 async function boot() {
   const config = await fetch("config.json").then((r) => r.json());
@@ -32,7 +46,7 @@ async function boot() {
 }
 
 function connect(url) {
-  setStatus(`Connecting ${url} …`);
+  setStatus(`Connecting ${url} …`, "connecting");
   const ws = new WebSocket(url);
   state.ws = ws;
   ws.onopen = () => authenticate();
@@ -41,7 +55,7 @@ function connect(url) {
     rejectPending("Disconnected");
     state.clientID = null;
     state.paneID = null;
-    setStatus("Disconnected — retrying in 2s");
+    setStatus("Disconnected — retrying in 2s", "error");
     setTimeout(() => connect(url), 2000);
   };
 }
@@ -73,15 +87,15 @@ async function authenticate() {
     onAuthenticated(result).catch(reportError);
   } catch (err) {
     if (err.code === 401) {
-      setStatus("Waiting for approval on your Mac …");
+      setStatus("Waiting for approval on your Mac …", "connecting");
       try {
         const result = await request("pairDevice", value);
         onAuthenticated(result).catch(reportError);
       } catch (pairErr) {
-        setStatus(`Pairing denied (${pairErr.code || "error"})`);
+        setStatus(`Pairing denied (${pairErr.code || "error"})`, "error");
       }
     } else {
-      setStatus(`Auth failed (${err.code || "error"})`);
+      setStatus(`Auth failed (${err.code || "error"})`, "error");
     }
   }
 }
@@ -94,7 +108,7 @@ function deviceName() {
 
 async function onAuthenticated(pairing) {
   state.clientID = pairing.clientID;
-  setStatus("Connected");
+  setStatus("Connected", "connected");
   ensureTerminal(pairing);
   state.projects = await request("listProjects");
   renderRail();
@@ -186,7 +200,8 @@ function renderRail() {
     el.className = "project" + (project.id === state.projectID ? " active" : "");
     el.textContent = project.name.slice(0, 1).toUpperCase();
     el.title = project.name;
-    el.onclick = () => selectProject(project.id);
+    el.setAttribute("aria-label", project.name);
+    activatable(el, () => selectProject(project.id));
     rail.appendChild(el);
   });
 }
@@ -242,7 +257,7 @@ function renderSidebar() {
       const row = document.createElement("div");
       row.className = "sidebar-row" + (worktree.id === state.worktreeID ? " active" : "");
       row.textContent = worktree.name;
-      row.onclick = () => switchWorktree(worktree.id);
+      activatable(row, () => switchWorktree(worktree.id));
       sidebar.appendChild(row);
     });
   }
@@ -260,7 +275,7 @@ function renderSidebar() {
     const row = document.createElement("div");
     row.className = "sidebar-row session" + (tab.paneID === state.paneID ? " active" : "");
     row.textContent = tab.title || "Terminal";
-    row.onclick = () => attachPane(tab.paneID);
+    activatable(row, () => attachPane(tab.paneID));
     sidebar.appendChild(row);
   });
 }
@@ -323,7 +338,7 @@ function buildTabArea(area) {
     if (tab.id === area.activeTabID) t.classList.add("active");
     if (isTerminal && tab.paneID === state.paneID) t.classList.add("attached");
     t.textContent = tab.title || (isTerminal ? "Terminal" : tab.kind);
-    if (isTerminal) t.onclick = () => attachPane(tab.paneID);
+    if (isTerminal) activatable(t, () => attachPane(tab.paneID));
     bar.appendChild(t);
   });
   const body = document.createElement("div");
@@ -345,7 +360,7 @@ function placeholder(text, paneID) {
   const ph = document.createElement("div");
   ph.className = "pane-placeholder";
   ph.textContent = text;
-  if (paneID) ph.onclick = () => attachPane(paneID);
+  if (paneID) activatable(ph, () => attachPane(paneID));
   return ph;
 }
 
@@ -377,7 +392,7 @@ async function attachPane(paneID) {
   const { cols, rows } = state.term;
   try {
     await request("takeOverPane", { paneID, cols, rows });
-    setStatus("Attached");
+    setStatus("Attached", "connected");
   } catch (err) {
     setStatus(`Attach failed (${err.code || "error"})`);
   }
