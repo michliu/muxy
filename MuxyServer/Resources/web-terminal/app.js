@@ -1,7 +1,7 @@
 const state = {
   ws: null, clientID: null, reqId: 0, pending: new Map(),
   projects: [], projectID: null, worktreeID: null, workspace: null,
-  paneID: null, term: null, fit: null,
+  paneID: null, term: null, fit: null, termHost: null,
 };
 
 function uuid() {
@@ -22,6 +22,8 @@ function deviceCreds() {
 }
 
 function setStatus(text) { document.getElementById("status").textContent = text; }
+
+function reportError(err) { setStatus(`Error: ${(err && err.message) || "failed"}`); }
 
 async function boot() {
   const config = await fetch("config.json").then((r) => r.json());
@@ -68,13 +70,13 @@ async function authenticate() {
   const value = { deviceID: id, deviceName: deviceName(), token, theme: null };
   try {
     const result = await request("authenticateDevice", value);
-    onAuthenticated(result);
+    onAuthenticated(result).catch(reportError);
   } catch (err) {
     if (err.code === 401) {
       setStatus("Waiting for approval on your Mac …");
       try {
         const result = await request("pairDevice", value);
-        onAuthenticated(result);
+        onAuthenticated(result).catch(reportError);
       } catch (pairErr) {
         setStatus(`Pairing denied (${pairErr.code || "error"})`);
       }
@@ -120,7 +122,7 @@ function onEvent(payload) {
       if (data && data.paneID === state.paneID) writeBytes(data.bytes);
       break;
     case "workspaceChanged":
-      if (data && data.projectID === state.projectID) { state.workspace = data; renderTabs(); }
+      if (data && data.projectID === state.projectID) { state.workspace = data; renderWorkspace(); autoAttachFirst(); }
       break;
     case "themeChanged":
       if (data) applyTheme(data.fg, data.bg, data.palette);
@@ -132,17 +134,18 @@ function onEvent(payload) {
 
 function ensureTerminal(pairing) {
   if (state.term) return;
+  const host = document.createElement("div");
+  host.className = "term-host";
   const term = new Terminal({ cursorBlink: true, fontFamily: "SF Mono, Menlo, monospace", fontSize: 13, allowProposedApi: true });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  term.open(document.getElementById("terminal"));
-  fit.fit();
+  term.open(host);
   term.onData((input) => {
     if (!state.paneID) return;
     request("terminalInput", { paneID: state.paneID, bytes: bytesToBase64(new TextEncoder().encode(input)) });
   });
   window.addEventListener("resize", () => resizePane());
-  state.term = term; state.fit = fit;
+  state.term = term; state.fit = fit; state.termHost = host;
   if (pairing.themeFg !== undefined) applyTheme(pairing.themeFg, pairing.themeBg, pairing.themePalette);
 }
 
@@ -195,7 +198,8 @@ async function selectProject(projectID) {
   if (state.worktreeID) await request("selectWorktree", { projectID, worktreeID: state.worktreeID });
   state.workspace = await request("getWorkspace", { projectID });
   renderRail();
-  renderTabs();
+  renderWorkspace();
+  autoAttachFirst();
 }
 
 function collectTabs(node, acc) {
@@ -209,33 +213,114 @@ function collectTabs(node, acc) {
   return acc;
 }
 
-function renderTabs() {
-  const tabsEl = document.getElementById("tabs");
-  tabsEl.innerHTML = "";
-  const tabs = state.workspace ? collectTabs(state.workspace.root, []) : [];
-  tabs.forEach((tab) => {
-    const el = document.createElement("div");
-    el.className = "tab" + (tab.paneID === state.paneID ? " active" : "");
-    el.textContent = tab.title || "Terminal";
-    el.onclick = () => attachPane(tab.paneID);
-    tabsEl.appendChild(el);
+function paneExists(node, paneID) {
+  if (!node) return false;
+  if (node.type === "tabArea") return node.tabArea.tabs.some((tab) => tab.paneID === paneID);
+  if (node.type === "split") return paneExists(node.split.first, paneID) || paneExists(node.split.second, paneID);
+  return false;
+}
+
+function renderWorkspace() {
+  const container = document.getElementById("workspace");
+  container.innerHTML = "";
+  if (!state.workspace) return;
+  if (state.paneID && !paneExists(state.workspace.root, state.paneID)) state.paneID = null;
+  container.appendChild(buildNode(state.workspace.root));
+  placeTerminal();
+  resizePane();
+}
+
+function buildNode(node) {
+  if (node.type === "split") return buildSplit(node.split);
+  return buildTabArea(node.tabArea);
+}
+
+function buildSplit(split) {
+  const el = document.createElement("div");
+  el.className = split.direction === "vertical" ? "split vertical" : "split";
+  const first = buildNode(split.first);
+  const second = buildNode(split.second);
+  first.style.flex = `${split.ratio} 1 0`;
+  second.style.flex = `${1 - split.ratio} 1 0`;
+  el.appendChild(first);
+  el.appendChild(second);
+  return el;
+}
+
+function buildTabArea(area) {
+  const el = document.createElement("div");
+  el.className = "tabarea";
+  const bar = document.createElement("div");
+  bar.className = "tabbar";
+  area.tabs.forEach((tab) => {
+    const isTerminal = tab.kind === "terminal" && Boolean(tab.paneID);
+    const t = document.createElement("div");
+    t.className = "tab";
+    if (isTerminal) t.classList.add("terminal");
+    if (tab.id === area.activeTabID) t.classList.add("active");
+    if (isTerminal && tab.paneID === state.paneID) t.classList.add("attached");
+    t.textContent = tab.title || (isTerminal ? "Terminal" : tab.kind);
+    if (isTerminal) t.onclick = () => attachPane(tab.paneID);
+    bar.appendChild(t);
   });
-  if (!state.paneID && tabs[0]) attachPane(tabs[0].paneID);
+  const body = document.createElement("div");
+  body.className = "pane-body";
+  const activeTab = area.tabs.find((tab) => tab.id === area.activeTabID) || area.tabs[0];
+  const activePaneID = activeTab && activeTab.kind === "terminal" ? activeTab.paneID : null;
+  body.dataset.pane = activePaneID || "";
+  if (!activePaneID) {
+    body.appendChild(placeholder(activeTab ? (activeTab.title || activeTab.kind) : "Empty", null));
+  } else if (activePaneID !== state.paneID) {
+    body.appendChild(placeholder("Click to attach", activePaneID));
+  }
+  el.appendChild(bar);
+  el.appendChild(body);
+  return el;
+}
+
+function placeholder(text, paneID) {
+  const ph = document.createElement("div");
+  ph.className = "pane-placeholder";
+  ph.textContent = text;
+  if (paneID) ph.onclick = () => attachPane(paneID);
+  return ph;
+}
+
+function placeTerminal() {
+  if (!state.paneID || !state.termHost) return;
+  document.querySelectorAll(".pane-body").forEach((body) => {
+    if (body.dataset.pane === state.paneID) {
+      body.innerHTML = "";
+      body.appendChild(state.termHost);
+    }
+  });
+}
+
+function autoAttachFirst() {
+  if (state.paneID) return;
+  const tabs = state.workspace ? collectTabs(state.workspace.root, []) : [];
+  if (tabs[0]) attachPane(tabs[0].paneID);
 }
 
 async function attachPane(paneID) {
   if (state.paneID === paneID) return;
-  if (state.paneID) await request("releasePane", { paneID: state.paneID });
+  if (state.paneID) {
+    try { await request("releasePane", { paneID: state.paneID }); } catch { setStatus("Release failed"); }
+  }
   state.paneID = paneID;
   state.term.reset();
+  renderWorkspace();
   const { cols, rows } = state.term;
-  await request("takeOverPane", { paneID, cols, rows });
-  renderTabs();
-  setStatus(`Attached to pane`);
+  try {
+    await request("takeOverPane", { paneID, cols, rows });
+    setStatus("Attached");
+  } catch (err) {
+    setStatus(`Attach failed (${err.code || "error"})`);
+  }
 }
 
 function resizePane() {
-  if (!state.fit || !state.paneID) return;
+  if (!state.fit || !state.paneID || !state.termHost || !state.termHost.isConnected) return;
   state.fit.fit();
   const { cols, rows } = state.term;
   request("terminalResize", { paneID: state.paneID, cols, rows });
