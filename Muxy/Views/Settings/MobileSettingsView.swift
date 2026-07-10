@@ -18,6 +18,7 @@ struct MobileSettingsView: View {
     @State private var portValidationError: String?
     @State private var showFreePortConfirmation = false
     @State private var didCopyPairingLink = false
+    @State private var didCopyWebURL = false
     @State private var pairingHosts: [MobilePairingHost] = []
     @State private var selectedNetwork: MobilePairingNetwork = .local
     @State private var pathMonitor: NWPathMonitor?
@@ -80,6 +81,17 @@ struct MobileSettingsView: View {
                     footer: Self.pairingFooter
                 ) {
                     pairingCard(host: selectedHost, uri: uri)
+                }
+            }
+
+            if service.isEnabled, let selectedHost {
+                let webURL = service.webURLString(host: selectedHost.host)
+                SettingsSection(
+                    "Web Terminal",
+                    footer: "Open this URL in a browser on the same network to control any terminal session. "
+                        + "First use still needs your approval on this Mac."
+                ) {
+                    webTerminalCard(url: webURL)
                 }
             }
 
@@ -243,6 +255,38 @@ struct MobileSettingsView: View {
         .padding(.vertical, SettingsMetrics.rowVerticalPadding)
     }
 
+    private func webTerminalCard(url: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            MobilePairingQRView(uriString: url, size: 132)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Open in any browser on this network:")
+                    .font(.system(size: SettingsMetrics.labelFontSize))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(url)
+                    .font(.system(size: SettingsMetrics.labelFontSize, design: .monospaced))
+                    .foregroundStyle(SettingsStyle.foreground)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Button {
+                    copyWebURL(url)
+                } label: {
+                    Label(
+                        didCopyWebURL ? "Copied" : "Copy URL",
+                        systemImage: didCopyWebURL ? "checkmark" : "doc.on.doc"
+                    )
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: SettingsMetrics.footnoteFontSize, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(MuxyTheme.accent)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, SettingsMetrics.horizontalPadding)
+        .padding(.vertical, SettingsMetrics.rowVerticalPadding)
+    }
+
     private func pairingLinkRow(uri: String) -> some View {
         HStack(spacing: 8) {
             Text(uri)
@@ -278,6 +322,17 @@ struct MobileSettingsView: View {
         Task {
             try? await Task.sleep(for: .seconds(2))
             await MainActor.run { didCopyPairingLink = false }
+        }
+    }
+
+    private func copyWebURL(_ url: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+        didCopyWebURL = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run { didCopyWebURL = false }
         }
     }
 

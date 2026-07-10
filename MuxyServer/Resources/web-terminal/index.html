@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>Muxy Web</title>
+    <link rel="stylesheet" href="vendor/xterm.min.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="rail"></aside>
+      <nav id="sidebar"></nav>
+      <main id="main">
+        <div id="stage">
+          <div id="workspace"></div>
+          <div id="overlay" aria-live="polite"></div>
+        </div>
+        <div id="status" data-state="idle">
+          <span id="conn-dot" aria-hidden="true"></span>
+          <span id="status-text"></span>
+        </div>
+      </main>
+    </div>
+    <script src="vendor/xterm.min.js"></script>
+    <script src="vendor/addon-fit.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

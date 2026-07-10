@@ -41,7 +41,10 @@ let package = Package(
             dependencies: [
                 "MuxyShared",
             ],
-            path: "MuxyServer"
+            path: "MuxyServer",
+            resources: [
+                .copy("Resources/web-terminal"),
+            ]
         ),
         .executableTarget(
             name: "Muxy",

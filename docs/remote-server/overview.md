@@ -21,6 +21,7 @@ flowchart TB
 | [Methods](methods.md) | Every RPC method, its parameters, and result shapes |
 | [Events](events.md) | Server-pushed events and their payloads |
 | [Data Objects](data-objects.md) | Project, Worktree, Workspace, Notification, terminal cells, logo |
+| [Web Terminal](web-terminal.md) | Browser client, how it's served, and the shared pairing model |
 
 ## Quick reference
 

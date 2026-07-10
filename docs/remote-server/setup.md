@@ -12,6 +12,8 @@ The Mobile server is **disabled by default in release builds**. Development buil
 
 The valid port range is `1024`–`65535`. If the port is already in use, the settings panel shows a **Free Port** action that terminates the process currently listening on it.
 
+Enabling the mobile server also starts a **read-only static HTTP server** for the [Web Terminal](web-terminal.md) on `webPort` (default `4864` release / `4867` development). It only serves the bundled browser app; all control still flows over the WebSocket server.
+
 ## Endpoint
 
 - Protocol: WebSocket (text frames; binary frames are also accepted)
