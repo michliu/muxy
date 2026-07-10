@@ -10,7 +10,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
   font: 13px -apple-system, "SF Pro Text", system-ui, sans-serif; }
-#app { display: grid; grid-template-columns: 56px 220px 1fr; height: 100vh; }
+#app { display: grid; grid-template-columns: 56px 220px 1fr;
+  grid-template-rows: minmax(0, 1fr); height: 100vh; }
 #rail { background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; }
 #rail .project { width: 36px; height: 36px; border-radius: 9px; background: var(--surface-2);
