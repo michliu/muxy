@@ -649,10 +649,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @MainActor
     private func setAppIcon() {
-        guard let url = Bundle.appResources.url(forResource: "AppIcon", withExtension: "png") else {
-            return
-        }
-        guard let image = NSImage(contentsOf: url) else { return }
+        let icon = Bundle.appResources.url(forResource: "AppIcon", withExtension: "png")
+            ?? Bundle.appResources.url(
+                forResource: "icon_512@2x",
+                withExtension: "png",
+                subdirectory: "Assets.xcassets/AppIcon.appiconset"
+            )
+        guard let url = icon, let image = NSImage(contentsOf: url) else { return }
         image.size = NSSize(width: 512, height: 512)
         NSApp.applicationIconImage = image
     }
