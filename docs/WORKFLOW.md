@@ -9,6 +9,15 @@ Personal working guide for this fork. `main` here is fork-primary: it carries th
 | `origin` | `github.com/muxy-app/muxy` | Upstream (pull updates only) |
 | `fork` | `github.com/michliu/muxy` | Yours — primary; `main` tracks `fork/main` |
 
+## Shortcuts
+
+| Command | Does |
+| --- | --- |
+| `scripts/dev.sh` | Build the debug app and launch it (`--no-build` to skip the build) |
+| `scripts/preview-web.sh` | Sync frontend edits into the running app's bundle (then hard-refresh the browser) |
+| `scripts/verify.sh --fix` | Run `checks.sh` with the pinned lint tools on `PATH` |
+| `scripts/sync-upstream.sh --check --push` | Merge `origin/main` into `main`, verify, push to fork |
+
 ## One-time setup (per machine)
 
 ```bash
