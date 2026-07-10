@@ -18,6 +18,7 @@ struct MobileSettingsView: View {
     @State private var portValidationError: String?
     @State private var showFreePortConfirmation = false
     @State private var didCopyPairingLink = false
+    @State private var didCopyWebURL = false
     @State private var pairingHosts: [MobilePairingHost] = []
     @State private var selectedNetwork: MobilePairingNetwork = .local
     @State private var pathMonitor: NWPathMonitor?
@@ -267,12 +268,13 @@ struct MobileSettingsView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Button {
-                    copyPairingLink(url)
+                    copyWebURL(url)
                 } label: {
                     Label(
-                        didCopyPairingLink ? "Copied" : "Copy URL",
-                        systemImage: didCopyPairingLink ? "checkmark" : "doc.on.doc"
+                        didCopyWebURL ? "Copied" : "Copy URL",
+                        systemImage: didCopyWebURL ? "checkmark" : "doc.on.doc"
                     )
+                    .labelStyle(.titleAndIcon)
                     .font(.system(size: SettingsMetrics.footnoteFontSize, weight: .medium))
                 }
                 .buttonStyle(.borderless)
@@ -319,6 +321,17 @@ struct MobileSettingsView: View {
         Task {
             try? await Task.sleep(for: .seconds(2))
             await MainActor.run { didCopyPairingLink = false }
+        }
+    }
+
+    private func copyWebURL(_ url: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+        didCopyWebURL = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run { didCopyWebURL = false }
         }
     }
 

@@ -50,6 +50,7 @@ public final class MuxyWebServer: @unchecked Sendable {
                 case .ready:
                     self?.finishStart(.success(()))
                 case let .failed(error):
+                    logger.error("Web server listener failed: \(error.localizedDescription)")
                     self?.finishStart(.failure(error))
                     self?.listener?.cancel()
                 default:
@@ -62,6 +63,7 @@ public final class MuxyWebServer: @unchecked Sendable {
             self.listener = listener
             listener.start(queue: queue)
         } catch {
+            logger.error("Web server failed to create listener: \(error.localizedDescription)")
             finishStart(.failure(error))
         }
     }
