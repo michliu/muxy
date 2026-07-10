@@ -1,10 +1,17 @@
 const state = {
   ws: null, clientID: null, reqId: 0, pending: new Map(),
   projects: [], projectID: null, worktreeID: null, workspace: null,
-  paneID: null, term: null, fit: null, decoder: new TextDecoder(),
+  paneID: null, term: null, fit: null,
 };
 
-function uuid() { return crypto.randomUUID(); }
+function uuid() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
 
 function deviceCreds() {
   let id = localStorage.getItem("muxy.deviceID");
@@ -28,7 +35,13 @@ function connect(url) {
   state.ws = ws;
   ws.onopen = () => authenticate();
   ws.onmessage = (e) => onMessage(JSON.parse(e.data));
-  ws.onclose = () => { setStatus("Disconnected — retrying in 2s"); setTimeout(() => connect(url), 2000); };
+  ws.onclose = () => {
+    rejectPending("Disconnected");
+    state.clientID = null;
+    state.paneID = null;
+    setStatus("Disconnected — retrying in 2s");
+    setTimeout(() => connect(url), 2000);
+  };
 }
 
 function request(method, value) {
@@ -43,6 +56,11 @@ function request(method, value) {
   }
   state.ws.send(JSON.stringify(frame));
   return Promise.resolve();
+}
+
+function rejectPending(reason) {
+  state.pending.forEach((waiter) => waiter.reject({ code: 0, message: reason }));
+  state.pending.clear();
 }
 
 async function authenticate() {
@@ -78,6 +96,7 @@ async function onAuthenticated(pairing) {
   ensureTerminal(pairing);
   state.projects = await request("listProjects");
   renderRail();
+  if (state.projectID) await selectProject(state.projectID);
 }
 
 function onMessage(frame) {
@@ -120,11 +139,17 @@ function ensureTerminal(pairing) {
   fit.fit();
   term.onData((input) => {
     if (!state.paneID) return;
-    request("terminalInput", { paneID: state.paneID, bytes: btoa(input) });
+    request("terminalInput", { paneID: state.paneID, bytes: bytesToBase64(new TextEncoder().encode(input)) });
   });
   window.addEventListener("resize", () => resizePane());
   state.term = term; state.fit = fit;
   if (pairing.themeFg !== undefined) applyTheme(pairing.themeFg, pairing.themeBg, pairing.themePalette);
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
 function writeBytes(base64) {
