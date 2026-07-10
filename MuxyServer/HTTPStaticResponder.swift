@@ -62,8 +62,8 @@ public enum HTTPStaticResponder {
     }
 
     private static func fileResponse(relative: String, resourceRoot: URL) -> HTTPStaticResponse {
-        let root = resourceRoot.standardizedFileURL
-        let candidate = root.appendingPathComponent(relative).standardizedFileURL
+        let root = resourceRoot.resolvingSymlinksInPath().standardizedFileURL
+        let candidate = root.appendingPathComponent(relative).resolvingSymlinksInPath().standardizedFileURL
         let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
         guard candidate.path == root.path || candidate.path.hasPrefix(rootPath) else {
             return errorResponse(status: 403, reason: "Forbidden")
