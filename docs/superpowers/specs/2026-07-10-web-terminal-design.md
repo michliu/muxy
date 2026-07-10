@@ -49,9 +49,16 @@
 - `index.html` / `app.js` / `style.css`。
 - **vendored xterm.js**:直接签入 `xterm.min.js` / `xterm.min.css` + fit / canvas addon 的压缩产物,运行时零 npm。
 - 连接页:host 取自页面来源,port 取自 `config.json`。
-- 导航侧栏:项目 → worktree → 遍历 `WorkspaceDTO.root` 分屏树,列出所有 `kind==terminal` 的 `TabDTO`(显示 `title`,附 `paneID`)。
-- 主区:xterm.js 实例渲染选中的 pane。
+- **视觉方向:尽量贴近 Muxy app**。web 端复刻 Muxy 的深色外壳与视觉语言:
+  - 左侧项目栏(project rail)列出项目,进入后展示 worktree。
+  - 顶部/侧边**垂直标签**列出 workspace 树里的所有终端 tab(`kind==terminal`,显示 `title`)。
+  - 主区按 `WorkspaceDTO.root` 的 `SplitNodeDTO` 递归渲染**分屏结构**(嵌套 flex 布局还原 Muxy 的 split 视觉)。
+  - 终端配色采用 `themeChanged` / `pairing` 返回的 fg/bg/palette,与 Muxy 主题一致。
+- 每次只对**选中的 pane** 调 `takeOverPane` 并流式渲染(ownership 独占,避免同时占多个 pane);其余 pane 显示占位,点选即切换接管。
+- xterm.js 实例渲染选中的 pane。
 - 会话状态:`deviceID` + `token` 存 `localStorage`,断线重连复用。
+
+> 说明:web 端是独立前端代码,"贴近 Muxy" 指复刻其配色/布局/标签视觉,并非重建完整 SwiftUI 外壳(命令面板、设置等不在本期)。前端任务以手动验证 + PR 截图/录屏为准(仓库无 JS 测试链);Swift 侧(HTTP 服务、路由、装配)全部 TDD。
 
 ### 3. Settings → Mobile(macOS,扩展)
 
