@@ -1,0 +1,116 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"golang.org/x/term"
+)
+
+const detachByte = byte(0x1d)
+
+type termData struct {
+	PaneID string `json:"paneID"`
+	Bytes  string `json:"bytes"`
+}
+
+func pumpOutput(paneID string, events <-chan eventPayload, out io.Writer, done <-chan struct{}) {
+	for {
+		select {
+		case <-done:
+			return
+		case ev, ok := <-events:
+			if !ok {
+				return
+			}
+			if ev.Event != "terminalOutput" && ev.Event != "terminalSnapshot" {
+				continue
+			}
+			if ev.Data == nil {
+				continue
+			}
+			var td termData
+			if json.Unmarshal(ev.Data.Value, &td) != nil {
+				continue
+			}
+			if td.PaneID != paneID {
+				continue
+			}
+			raw, err := base64.StdEncoding.DecodeString(td.Bytes)
+			if err != nil {
+				continue
+			}
+			out.Write(raw)
+		}
+	}
+}
+
+func scanForDetach(buf []byte, detach byte) ([]byte, bool) {
+	if i := bytes.IndexByte(buf, detach); i >= 0 {
+		return buf[:i], true
+	}
+	return buf, false
+}
+
+func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io.Reader, out io.Writer) error {
+	cols, rows, err := term.GetSize(fd)
+	if err != nil {
+		cols, rows = 80, 24
+	}
+	if _, err := client.request(ctx, "takeOverPane", map[string]any{
+		"paneID": paneID, "cols": cols, "rows": rows,
+	}); err != nil {
+		return err
+	}
+
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		return err
+	}
+	restore := func() { term.Restore(fd, oldState) }
+	defer restore()
+
+	done := make(chan struct{})
+	defer close(done)
+	go pumpOutput(paneID, client.events(), out, done)
+
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	defer signal.Stop(winch)
+	go func() {
+		for range winch {
+			if cols, rows, err := term.GetSize(fd); err == nil {
+				client.sendInput(ctx, "terminalResize", map[string]any{
+					"paneID": paneID, "cols": cols, "rows": rows,
+				})
+			}
+		}
+	}()
+
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := in.Read(buf)
+		if n > 0 {
+			before, detached := scanForDetach(buf[:n], detachByte)
+			if len(before) > 0 {
+				client.sendInput(ctx, "terminalInput", map[string]any{
+					"paneID": paneID,
+					"bytes":  base64.StdEncoding.EncodeToString(before),
+				})
+			}
+			if detached {
+				client.sendInput(ctx, "releasePane", map[string]any{"paneID": paneID})
+				return nil
+			}
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+}
