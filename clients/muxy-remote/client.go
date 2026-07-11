@@ -64,10 +64,7 @@ func (c *Client) readLoop() {
 			if json.Unmarshal(in.Payload, &ep) != nil {
 				continue
 			}
-			select {
-			case c.eventCh <- ep:
-			default:
-			}
+			c.eventCh <- ep
 		}
 	}
 }

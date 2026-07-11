@@ -76,6 +76,14 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 	restore := func() { term.Restore(fd, oldState) }
 	defer restore()
 
+	kill := make(chan os.Signal, 1)
+	signal.Notify(kill, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-kill
+		restore()
+		os.Exit(1)
+	}()
+
 	done := make(chan struct{})
 	defer close(done)
 	go pumpOutput(paneID, client.events(), out, done)
