@@ -131,3 +131,21 @@ func (c *Client) events() <-chan eventPayload {
 func (c *Client) close() {
 	c.conn.Close(websocket.StatusNormalClosure, "")
 }
+
+func (c *Client) authenticate(ctx context.Context, cr creds) (json.RawMessage, error) {
+	value := map[string]any{
+		"deviceID":   cr.DeviceID,
+		"deviceName": deviceName(),
+		"token":      cr.Token,
+		"theme":      nil,
+	}
+	result, err := c.request(ctx, "authenticateDevice", value)
+	if err == nil {
+		return result, nil
+	}
+	rerr, ok := err.(*rpcError)
+	if !ok || rerr.Code != 401 {
+		return nil, err
+	}
+	return c.request(ctx, "pairDevice", value)
+}
