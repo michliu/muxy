@@ -18,9 +18,14 @@ func TestPumpOutputDecodesMatchingPane(t *testing.T) {
 	events <- eventPayload{Event: "terminalOutput", Data: &dataBody{
 		Type: "terminalOutput", Value: []byte(`{"paneID":"P1","bytes":"IQ=="}`)}}
 
-	go pumpOutput("P1", events, &out, done)
+	finished := make(chan struct{})
+	go func() {
+		pumpOutput("P1", events, &out, done)
+		close(finished)
+	}()
 	time.Sleep(100 * time.Millisecond)
 	close(done)
+	<-finished
 
 	if out.String() != "hello!" {
 		t.Errorf("out = %q, want %q", out.String(), "hello!")
