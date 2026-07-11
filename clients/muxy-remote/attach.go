@@ -53,6 +53,9 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 	if err != nil {
 		cols, rows = 80, 24
 	}
+	client.setEventSink(func(ev eventPayload) { writePaneEvent(paneID, ev, out) })
+	defer client.setEventSink(nil)
+
 	if _, err := client.request(ctx, "takeOverPane", map[string]any{
 		"paneID": paneID, "cols": cols, "rows": rows,
 	}); err != nil {
@@ -66,26 +69,35 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 	restore := func() { term.Restore(fd, oldState) }
 	defer restore()
 
+	attachDone := make(chan struct{})
+	defer close(attachDone)
+
 	kill := make(chan os.Signal, 1)
 	signal.Notify(kill, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(kill)
 	go func() {
-		<-kill
-		restore()
-		os.Exit(1)
+		select {
+		case <-kill:
+			restore()
+			os.Exit(1)
+		case <-attachDone:
+		}
 	}()
-
-	client.setEventSink(func(ev eventPayload) { writePaneEvent(paneID, ev, out) })
-	defer client.setEventSink(nil)
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
 	go func() {
-		for range winch {
-			if cols, rows, err := term.GetSize(fd); err == nil {
-				client.sendInput(ctx, "terminalResize", map[string]any{
-					"paneID": paneID, "cols": cols, "rows": rows,
-				})
+		for {
+			select {
+			case <-winch:
+				if cols, rows, err := term.GetSize(fd); err == nil {
+					client.sendInput(ctx, "terminalResize", map[string]any{
+						"paneID": paneID, "cols": cols, "rows": rows,
+					})
+				}
+			case <-attachDone:
+				return
 			}
 		}
 	}()
