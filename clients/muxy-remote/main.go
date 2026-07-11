@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -52,20 +53,22 @@ func run(host string, port int) error {
 		return fmt.Errorf("auth failed (delete ~/.config/muxy-remote to re-pair): %w", err)
 	}
 
-	projectID, err := selectProject(ctx, client)
+	stdin := bufio.NewReader(os.Stdin)
+
+	projectID, err := selectProject(ctx, client, stdin)
 	if err != nil {
 		return err
 	}
-	paneID, err := selectPane(ctx, client, projectID)
+	paneID, err := selectPane(ctx, client, projectID, stdin)
 	if err != nil {
 		return err
 	}
 
 	fmt.Fprintln(os.Stderr, "Attached. Press Ctrl-] to detach.")
-	return runAttach(ctx, client, paneID, int(os.Stdin.Fd()), os.Stdin, os.Stdout)
+	return runAttach(ctx, client, paneID, int(os.Stdin.Fd()), stdin, os.Stdout)
 }
 
-func selectProject(ctx context.Context, client *Client) (string, error) {
+func selectProject(ctx context.Context, client *Client, stdin *bufio.Reader) (string, error) {
 	value, err := client.request(ctx, "listProjects", nil)
 	if err != nil {
 		return "", err
@@ -84,7 +87,7 @@ func selectProject(ctx context.Context, client *Client) (string, error) {
 	for i, p := range projects {
 		names[i] = p.Name
 	}
-	idx, err := pick("Project", names, os.Stdin, os.Stderr)
+	idx, err := pick("Project", names, stdin, os.Stderr)
 	if err != nil {
 		return "", err
 	}
@@ -95,7 +98,7 @@ func selectProject(ctx context.Context, client *Client) (string, error) {
 	return projectID, nil
 }
 
-func selectPane(ctx context.Context, client *Client, projectID string) (string, error) {
+func selectPane(ctx context.Context, client *Client, projectID string, stdin *bufio.Reader) (string, error) {
 	wtValue, err := client.request(ctx, "listWorktrees", map[string]any{"projectID": projectID})
 	if err != nil {
 		return "", err
@@ -104,13 +107,15 @@ func selectPane(ctx context.Context, client *Client, projectID string) (string, 
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	json.Unmarshal(wtValue, &worktrees)
+	if err := json.Unmarshal(wtValue, &worktrees); err != nil {
+		return "", err
+	}
 	if len(worktrees) > 0 {
 		wtNames := make([]string, len(worktrees))
 		for i, w := range worktrees {
 			wtNames[i] = w.Name
 		}
-		widx, err := pick("Worktree", wtNames, os.Stdin, os.Stderr)
+		widx, err := pick("Worktree", wtNames, stdin, os.Stderr)
 		if err != nil {
 			return "", err
 		}
@@ -142,7 +147,7 @@ func selectPane(ctx context.Context, client *Client, projectID string) (string, 
 	for i, p := range panes {
 		titles[i] = p.Title
 	}
-	idx, err := pick("Terminal session", titles, os.Stdin, os.Stderr)
+	idx, err := pick("Terminal session", titles, stdin, os.Stderr)
 	if err != nil {
 		return "", err
 	}

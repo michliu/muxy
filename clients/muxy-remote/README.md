@@ -15,7 +15,7 @@ On the Mac: **Settings → Mobile → enable**. Then on Ubuntu:
 
     ./muxy-remote --host <mac-host> [--port 4865]
 
-First run prompts approval on the Mac. Pick a project, then a terminal session; you're attached. Press **Ctrl-]** to detach.
+First run prompts approval on the Mac. Pick a project (and a worktree if the project has several), then a terminal session; you're attached. Press **Ctrl-]** to detach.
 
 Ports: release `4865`, dev `4866`.
 
