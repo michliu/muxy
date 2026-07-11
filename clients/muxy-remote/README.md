@@ -15,9 +15,13 @@ On the Mac: **Settings → Mobile → enable**. Then on Ubuntu:
 
     ./muxy-remote --host <mac-host> [--port 4865]
 
-First run prompts approval on the Mac. Pick a project (and a worktree if the project has several), then a terminal session; you're attached. Press **Ctrl-]** to detach.
+On a real terminal this opens a **session browser** (a searchable TUI):
 
-Ports: release `4865`, dev `4866`.
+- `↑/↓` or `j/k` move · `/` search · `Enter` attach · `Esc` back · `q` quit
+- Sessions refresh live; markers show `●` your session, `▣` held by the Mac, `○` held by another client
+- While attached it's a full raw terminal — press **Ctrl-]** to detach back to the browser and pick another session
+
+Piped/non-interactive input falls back to a numbered menu. Ports: release `4865`, dev `4866`.
 
 ## Reaching the Mac
 

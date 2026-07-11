@@ -53,6 +53,10 @@ func run(host string, port int) error {
 		return fmt.Errorf("auth failed (delete ~/.config/muxy-remote to re-pair): %w", err)
 	}
 
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return runTUI(ctx, client)
+	}
+
 	stdin := bufio.NewReader(os.Stdin)
 
 	projectID, err := selectProject(ctx, client, stdin)
@@ -153,5 +157,3 @@ func selectPane(ctx context.Context, client *Client, projectID string, stdin *bu
 	}
 	return panes[idx].ID, nil
 }
-
-var _ = term.IsTerminal
