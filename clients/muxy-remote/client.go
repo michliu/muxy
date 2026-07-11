@@ -90,11 +90,13 @@ func (c *Client) request(ctx context.Context, method string, value any) (json.Ra
 	c.mu.Lock()
 	c.pending[id] = ch
 	c.mu.Unlock()
-
-	if err := c.conn.Write(ctx, websocket.MessageText, frame); err != nil {
+	defer func() {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
+	}()
+
+	if err := c.conn.Write(ctx, websocket.MessageText, frame); err != nil {
 		return nil, err
 	}
 
