@@ -114,9 +114,10 @@ xcrun dsymutil "$APP_BUNDLE/Contents/MacOS/Muxy" -o "$DSYM_BUNDLE"
 echo "==> Stripping local and debug symbols"
 strip -Sx "$APP_BUNDLE/Contents/MacOS/Muxy"
 
-if [[ -d "$SPM_BUILD_DIR/Muxy_Muxy.bundle" ]]; then
-    cp -R "$SPM_BUILD_DIR/Muxy_Muxy.bundle" "$APP_BUNDLE/Contents/Resources/Muxy_Muxy.bundle"
-fi
+for bundle in "$SPM_BUILD_DIR"/*.bundle; do
+    [[ -d "$bundle" ]] || continue
+    cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/$(basename "$bundle")"
+done
 
 cp "$PROJECT_ROOT/Muxy/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_BUNDLE/Contents/Info.plist"
