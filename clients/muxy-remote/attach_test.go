@@ -3,29 +3,22 @@ package main
 import (
 	"bytes"
 	"testing"
-	"time"
 )
 
-func TestPumpOutputDecodesMatchingPane(t *testing.T) {
-	events := make(chan eventPayload, 4)
-	done := make(chan struct{})
+func TestWritePaneEventDecodesMatchingPane(t *testing.T) {
 	var out bytes.Buffer
-
-	events <- eventPayload{Event: "terminalSnapshot", Data: &dataBody{
-		Type: "terminalSnapshot", Value: []byte(`{"paneID":"P1","bytes":"aGVsbG8="}`)}}
-	events <- eventPayload{Event: "terminalOutput", Data: &dataBody{
-		Type: "terminalOutput", Value: []byte(`{"paneID":"other","bytes":"eA=="}`)}}
-	events <- eventPayload{Event: "terminalOutput", Data: &dataBody{
-		Type: "terminalOutput", Value: []byte(`{"paneID":"P1","bytes":"IQ=="}`)}}
-
-	finished := make(chan struct{})
-	go func() {
-		pumpOutput("P1", events, &out, done)
-		close(finished)
-	}()
-	time.Sleep(100 * time.Millisecond)
-	close(done)
-	<-finished
+	events := []eventPayload{
+		{Event: "terminalSnapshot", Data: &dataBody{
+			Type: "terminalSnapshot", Value: []byte(`{"paneID":"P1","bytes":"aGVsbG8="}`)}},
+		{Event: "terminalOutput", Data: &dataBody{
+			Type: "terminalOutput", Value: []byte(`{"paneID":"other","bytes":"eA=="}`)}},
+		{Event: "terminalOutput", Data: &dataBody{
+			Type: "terminalOutput", Value: []byte(`{"paneID":"P1","bytes":"IQ=="}`)}},
+		{Event: "workspaceChanged", Data: &dataBody{Type: "workspace", Value: []byte(`{}`)}},
+	}
+	for _, ev := range events {
+		writePaneEvent("P1", ev, &out)
+	}
 
 	if out.String() != "hello!" {
 		t.Errorf("out = %q, want %q", out.String(), "hello!")

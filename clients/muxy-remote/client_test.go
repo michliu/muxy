@@ -91,6 +91,7 @@ func TestRequestReturnsRPCError(t *testing.T) {
 
 func TestEventsDelivered(t *testing.T) {
 	url := fakeServer(t, func(ctx context.Context, c *websocket.Conn) {
+		time.Sleep(100 * time.Millisecond)
 		ev := `{"type":"event","payload":{"event":"terminalOutput","data":{"type":"terminalOutput","value":{"paneID":"x","bytes":"aGk="}}}}`
 		c.Write(ctx, websocket.MessageText, []byte(ev))
 		time.Sleep(200 * time.Millisecond)
@@ -99,8 +100,16 @@ func TestEventsDelivered(t *testing.T) {
 	client, _ := dial(ctx, url)
 	defer client.close()
 
+	got := make(chan eventPayload, 1)
+	client.setEventSink(func(ev eventPayload) {
+		select {
+		case got <- ev:
+		default:
+		}
+	})
+
 	select {
-	case ev := <-client.events():
+	case ev := <-got:
 		if ev.Event != "terminalOutput" {
 			t.Errorf("event = %s", ev.Event)
 		}

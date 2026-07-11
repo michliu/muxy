@@ -20,35 +20,25 @@ type termData struct {
 	Bytes  string `json:"bytes"`
 }
 
-func pumpOutput(paneID string, events <-chan eventPayload, out io.Writer, done <-chan struct{}) {
-	for {
-		select {
-		case <-done:
-			return
-		case ev, ok := <-events:
-			if !ok {
-				return
-			}
-			if ev.Event != "terminalOutput" && ev.Event != "terminalSnapshot" {
-				continue
-			}
-			if ev.Data == nil {
-				continue
-			}
-			var td termData
-			if json.Unmarshal(ev.Data.Value, &td) != nil {
-				continue
-			}
-			if td.PaneID != paneID {
-				continue
-			}
-			raw, err := base64.StdEncoding.DecodeString(td.Bytes)
-			if err != nil {
-				continue
-			}
-			out.Write(raw)
-		}
+func writePaneEvent(paneID string, ev eventPayload, out io.Writer) {
+	if ev.Event != "terminalOutput" && ev.Event != "terminalSnapshot" {
+		return
 	}
+	if ev.Data == nil {
+		return
+	}
+	var td termData
+	if json.Unmarshal(ev.Data.Value, &td) != nil {
+		return
+	}
+	if td.PaneID != paneID {
+		return
+	}
+	raw, err := base64.StdEncoding.DecodeString(td.Bytes)
+	if err != nil {
+		return
+	}
+	out.Write(raw)
 }
 
 func scanForDetach(buf []byte, detach byte) ([]byte, bool) {
@@ -84,9 +74,8 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 		os.Exit(1)
 	}()
 
-	done := make(chan struct{})
-	defer close(done)
-	go pumpOutput(paneID, client.events(), out, done)
+	client.setEventSink(func(ev eventPayload) { writePaneEvent(paneID, ev, out) })
+	defer client.setEventSink(nil)
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)

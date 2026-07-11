@@ -15,7 +15,7 @@ type Client struct {
 	mu      sync.Mutex
 	nextID  int
 	pending map[string]chan responsePayload
-	eventCh chan eventPayload
+	sink    func(eventPayload)
 	closeCh chan struct{}
 }
 
@@ -28,7 +28,7 @@ func dial(ctx context.Context, url string) (*Client, error) {
 	c := &Client{
 		conn:    conn,
 		pending: make(map[string]chan responsePayload),
-		eventCh: make(chan eventPayload, 64),
+		sink:    func(eventPayload) {},
 		closeCh: make(chan struct{}),
 	}
 	go c.readLoop()
@@ -64,7 +64,10 @@ func (c *Client) readLoop() {
 			if json.Unmarshal(in.Payload, &ep) != nil {
 				continue
 			}
-			c.eventCh <- ep
+			c.mu.Lock()
+			sink := c.sink
+			c.mu.Unlock()
+			sink(ep)
 		}
 	}
 }
@@ -121,8 +124,13 @@ func (c *Client) sendInput(ctx context.Context, method string, value any) error 
 	return c.conn.Write(ctx, websocket.MessageText, frame)
 }
 
-func (c *Client) events() <-chan eventPayload {
-	return c.eventCh
+func (c *Client) setEventSink(fn func(eventPayload)) {
+	if fn == nil {
+		fn = func(eventPayload) {}
+	}
+	c.mu.Lock()
+	c.sink = fn
+	c.mu.Unlock()
 }
 
 func (c *Client) close() {
