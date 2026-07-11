@@ -53,6 +53,9 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 	if err != nil {
 		cols, rows = 80, 24
 	}
+	client.setEventSink(func(ev eventPayload) { writePaneEvent(paneID, ev, out) })
+	defer client.setEventSink(nil)
+
 	if _, err := client.request(ctx, "takeOverPane", map[string]any{
 		"paneID": paneID, "cols": cols, "rows": rows,
 	}); err != nil {
@@ -80,9 +83,6 @@ func runAttach(ctx context.Context, client *Client, paneID string, fd int, in io
 		case <-attachDone:
 		}
 	}()
-
-	client.setEventSink(func(ev eventPayload) { writePaneEvent(paneID, ev, out) })
-	defer client.setEventSink(nil)
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
