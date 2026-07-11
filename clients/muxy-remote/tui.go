@@ -321,6 +321,3 @@ func (m browserModel) View() string {
 	}
 	return m.list.View() + "\n" + footerStyle.Render(footer)
 }
-
-// TEMP stub — replaced by tuiattach.go in the next task
-func attachCmd(deps *tuiDeps, paneID string) tea.Cmd { return nil }
