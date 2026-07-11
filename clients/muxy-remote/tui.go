@@ -218,6 +218,7 @@ func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetItems(items)
 		m.list.Select(0)
 		m.list.Title = "Worktrees"
+		m.status = ""
 		return m, nil
 
 	case workspaceLoadedMsg:
@@ -225,10 +226,12 @@ func (m browserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenSessions
 		m.list.Title = "Sessions"
 		m.setSessionItems(m.attached)
+		m.status = ""
 		return m, nil
 
 	case attachDoneMsg:
 		m.deps.Client.setEventSink(m.deps.BrowseSink)
+		m.attached = ""
 		if msg.Err != nil {
 			m.status = "disconnected: " + msg.Err.Error()
 			return m, tea.Quit
