@@ -1,6 +1,6 @@
 # Remote Server Overview
 
-Muxy embeds a WebSocket server that lets external clients connect to the desktop app over the local network — for mobile companions, dashboards, and custom integrations.
+Muxy embeds a WebSocket server that lets external clients connect to the desktop app over the local network — for mobile companions, a browser web terminal, a Linux/Ubuntu CLI client, and custom integrations.
 
 ```mermaid
 flowchart TB
@@ -22,6 +22,7 @@ flowchart TB
 | [Events](events.md) | Server-pushed events and their payloads |
 | [Data Objects](data-objects.md) | Project, Worktree, Workspace, Notification, terminal cells, logo |
 | [Web Terminal](web-terminal.md) | Browser client, how it's served, and the shared pairing model |
+| [CLI Client](../../clients/muxy-remote/README.md) | `muxy-remote` — attach to a terminal pane from an Ubuntu/Linux shell |
 
 ## Quick reference
 

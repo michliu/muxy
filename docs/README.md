@@ -111,3 +111,5 @@ Muxy ships two [skills.sh](https://www.skills.sh) skills that teach coding agent
 | [API Methods](remote-server/methods.md) | Every RPC method and its parameters |
 | [Events](remote-server/events.md) | Server-pushed events and their payloads |
 | [Data Objects](remote-server/data-objects.md) | Project, worktree, workspace, notification, terminal snapshot |
+| [Web Terminal](remote-server/web-terminal.md) | Browser client that takes over any terminal pane |
+| [CLI Client](../clients/muxy-remote/README.md) | `muxy-remote` — attach to a pane from an Ubuntu/Linux terminal |

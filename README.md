@@ -31,6 +31,8 @@ Lightweight terminal that has a rich API for extensions
 - Image viewer
 - Extensions
 - Mobile companion apps (iOS & Android)
+- Web terminal — take over any session from a browser
+- Ubuntu/Linux CLI client (`muxy-remote`) — attach to a pane like `ssh` / `tmux attach`
 - Rich input panel with image attachments
 - Voice input
 - Notifications (in-app & native macOS)

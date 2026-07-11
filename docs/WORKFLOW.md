@@ -44,13 +44,30 @@ swift build --product Muxy      # build (first time is slow)
 - Ports: dev page `4867` / ws `4866`; release `4864` / `4865`.
 - Frontend live edit: `MuxyWebServer` reads files from the built bundle **per request**. To preview a CSS/JS/HTML change without rebuilding, copy it into `.build/arm64-apple-macosx/debug/Muxy_MuxyServer.bundle/web-terminal/` and hard-refresh the browser (`⌘⇧R`). Swift changes still need a rebuild.
 
+## muxy-remote (Ubuntu/Linux CLI client)
+
+A Go client under `clients/muxy-remote/` that attaches to a Mac terminal pane from a Linux shell over the same WebSocket server (like `ssh` / `tmux attach`). See `clients/muxy-remote/README.md`.
+
+```bash
+# build for the target Ubuntu arch (static, no cgo) and copy over
+cd clients/muxy-remote
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o muxy-remote-linux-amd64 .   # or GOARCH=arm64
+scp muxy-remote-linux-amd64 you@ubuntu:~/muxy-remote
+
+# on Ubuntu (Mac: Settings → Mobile enabled):
+chmod +x ~/muxy-remote
+./muxy-remote --host <mac-host> --port 4865      # release; dev is 4866
+```
+
+Reach the Mac via LAN IP, a Tailscale IP (both must be on the same tailnet), or an SSH tunnel (`ssh -L 4865:localhost:4865 …` then `--host localhost`). Tests: `cd clients/muxy-remote && go test ./...` (Go 1.26+, no SPM).
+
 ## Verify
 
 ```bash
 PATH="$HOME/.muxy-tools/bin:$PATH" scripts/checks.sh --fix
 ```
 
-Runs format + lint + build + full test suite.
+Runs format + lint + build + full test suite (Muxy app only; `muxy-remote` has its own `go test`).
 
 ## Sync upstream + back up
 
